@@ -19,9 +19,13 @@ function getDays(yearMonth: string): string[] {
   return Array.from({ length: total }, (_, i) => `${yearMonth}-${String(i + 1).padStart(2, '0')}`)
 }
 
+/**
+ * Tuần làm 6 ngày: Thứ 2 → Thứ 7. Chỉ Chủ nhật là cuối tuần.
+ * (Trước đây Sat+Sun đều cuối tuần — đã đổi theo lịch làm việc thực tế.)
+ */
 function isWeekend(date: string): boolean {
   const dow = new Date(date + 'T00:00:00').getDay()
-  return dow === 0 || dow === 6
+  return dow === 0 // chỉ Sun
 }
 
 function dayNum(date: string): string { return date.slice(8) }
@@ -201,19 +205,27 @@ export default function ChamCongPage() {
   type AttEdit = { empId: string; empName: string; date: string }
   const [attEdit, setAttEdit] = useState<AttEdit | null>(null)
   const [attVal,  setAttVal]  = useState<number>(1.0)
+  const [attNote, setAttNote] = useState<string>('')
   const [saving,  setSaving]  = useState(false)
   const QUICK = [0, 0.5, 1.0, 1.5, 2.0]
 
   function openAttEdit(empId: string, empName: string, date: string) {
     if (!isManager) return
-    setAttVal(attMap[`${empId}|${date}`]?.units ?? 1.0)
+    const existing = attMap[`${empId}|${date}`]
+    setAttVal(existing?.units ?? 1.0)
+    setAttNote(existing?.note ?? '')
     setAttEdit({ empId, empName, date })
   }
   async function saveAtt() {
     if (!attEdit) return
     setSaving(true)
     try {
-      await upsertWorkUnit({ employeeId: attEdit.empId, date: attEdit.date, units: attVal })
+      await upsertWorkUnit({
+        employeeId: attEdit.empId,
+        date: attEdit.date,
+        units: attVal,
+        note: attNote.trim() || undefined,
+      })
       await mutateWU()
     } catch (e) {
       console.error('saveAtt error:', e)
@@ -436,9 +448,13 @@ export default function ChamCongPage() {
                       {days.map(date => {
                         const wu = attMap[`${emp.id}|${date}`]
                         const units = wu?.units ?? null
+                        const tip = wu?.note
+                          ? `${attLabel(units)} công\n${wu.note}`
+                          : undefined
                         return (
-                          <td key={date} onClick={() => openAttEdit(emp.id, emp.fullName, date)}
-                            className={`${wkCls(date, 'py-1 font-semibold select-none')} ${attCls(units)} ${isManager ? 'cursor-pointer hover:ring-1 hover:ring-inset hover:ring-blue-400 hover:z-10' : ''}`}>
+                          <td key={date} title={tip}
+                            onClick={() => openAttEdit(emp.id, emp.fullName, date)}
+                            className={`${wkCls(date, 'py-1 font-semibold select-none')} ${attCls(units)} ${isManager ? 'cursor-pointer hover:ring-1 hover:ring-inset hover:ring-blue-400 hover:z-10' : ''} ${wu?.note ? 'ring-1 ring-blue-300/50 ring-inset' : ''}`}>
                             {attLabel(units)}
                           </td>
                         )
@@ -656,6 +672,17 @@ export default function ChamCongPage() {
             <input type="number" step={0.25} min={0} max={3} value={attVal}
               onChange={e => setAttVal(parseFloat(e.target.value) || 0)}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 mb-4" />
+            <p className="text-[11px] font-medium text-gray-500 mb-1.5">
+              Ghi chú <span className="text-gray-300 font-normal">(tuỳ chọn)</span>
+            </p>
+            <textarea
+              value={attNote}
+              onChange={e => setAttNote(e.target.value)}
+              rows={2}
+              placeholder="VD: nửa ngày sáng, làm bù ngày T2..."
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 mb-4 resize-none"
+              maxLength={200}
+            />
             <div className="flex gap-2">
               <button onClick={() => setAttEdit(null)} className="flex-1 py-2 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">Hủy</button>
               <button onClick={saveAtt} disabled={saving} className="flex-1 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60">

@@ -32,12 +32,12 @@ export async function POST(req: NextRequest) {
     const monthStart = new Date(Date.UTC(y, m - 1, 1))
     const monthEnd = new Date(Date.UTC(y, m, 0))
 
-    // Collect weekdays (Mon–Fri). Sat(6) and Sun(0) are skipped.
+    // Tuần làm 6 ngày: Thứ 2 → Thứ 7. Chỉ Chủ nhật (dow=0) bị skip.
     const workdays: Date[] = []
     for (let d = 1; d <= monthEnd.getUTCDate(); d++) {
       const day = new Date(Date.UTC(y, m - 1, d))
       const dow = day.getUTCDay()
-      if (dow !== 0 && dow !== 6) workdays.push(day)
+      if (dow !== 0) workdays.push(day)
     }
 
     // Active employees (exclude soft-deleted and RESIGNED)
