@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Wallet, TrendingUp, TrendingDown, CheckCircle2, Clock, Lock, Banknote, Send, AlertTriangle, FileText } from 'lucide-react'
 import { fmtVND } from '@/lib/format'
 import { STATUS_MAP } from '@/app/luong/_lib/constants'
+import ApprovalHistory from './ApprovalHistory'
 
 type PayrollRow = {
   id: string
@@ -285,6 +286,9 @@ export default function PersonalSalaryView({
               </div>
             )}
           </div>
+
+          {/* Approval history timeline */}
+          <ApprovalHistory payrollId={payroll.id}/>
         </>
       )}
     </div>

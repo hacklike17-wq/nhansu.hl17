@@ -7,10 +7,11 @@ import { useEmployees } from '@/hooks/useEmployees'
 import { useSalaryColumns } from '@/hooks/useSalaryColumns'
 import { useCompanySettings } from '@/hooks/useCompanySettings'
 import { fmtVND } from '@/lib/format'
-import { X, RefreshCw, CheckCircle, Clock, Banknote, Plus, Trash2, Download, AlertTriangle } from 'lucide-react'
+import { X, RefreshCw, CheckCircle, Clock, Banknote, Plus, Trash2, Download, AlertTriangle, FileText } from 'lucide-react'
 import { STATUS_MAP, COL_STYLE, MANUAL_INPUT_MAP } from './_lib/constants'
 import { buildRowVars, renderCell } from './_lib/row-helpers'
 import PersonalSalaryView from '@/components/payroll/PersonalSalaryView'
+import ApprovalHistory from '@/components/payroll/ApprovalHistory'
 
 export default function LuongPage() {
   const { user, hasPermission } = useAuth()
@@ -194,6 +195,7 @@ export default function LuongPage() {
   /* ─── Transition status ─── */
   /* ─── Phase 07b: Snapshot modal ─── */
   const [snapshotModal, setSnapshotModal] = useState<any | null>(null)
+  const [historyModal, setHistoryModal] = useState<string | null>(null)
 
   const [statusModal, setStatusModal] = useState<{ id: string; name: string; current: string } | null>(null)
 
@@ -474,6 +476,10 @@ export default function LuongPage() {
                                 📋
                               </button>
                             )}
+                            <button onClick={() => setHistoryModal(p.id)}
+                              className="text-gray-400 hover:text-blue-600 transition-colors" title="Lịch sử duyệt">
+                              <FileText size={12}/>
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -605,6 +611,21 @@ export default function LuongPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Approval history modal ── */}
+      {historyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setHistoryModal(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="text-sm font-bold text-gray-900">Lịch sử duyệt</div>
+              <button onClick={() => setHistoryModal(null)} className="text-gray-400 hover:text-gray-600"><X size={16}/></button>
+            </div>
+            <div className="p-5">
+              <ApprovalHistory payrollId={historyModal}/>
+            </div>
           </div>
         </div>
       )}
