@@ -1,6 +1,16 @@
-import { Clock3, CalendarOff, AlertTriangle, Ban, HelpCircle } from "lucide-react"
-import type { ReactNode } from "react"
-import type { KpiBreakdown } from "@/app/_lib/dashboard-queries"
+'use client'
+import useSWR from 'swr'
+import { useState } from 'react'
+import {
+  Clock3,
+  CalendarOff,
+  AlertTriangle,
+  Ban,
+  HelpCircle,
+  RefreshCw,
+} from 'lucide-react'
+import type { ReactNode } from 'react'
+import type { KpiBreakdown } from '@/app/_lib/dashboard-queries'
 
 type Card = {
   code: keyof KpiBreakdown
@@ -10,32 +20,99 @@ type Card = {
 }
 
 const CARDS: Card[] = [
-  { code: "DM", label: "Đi muộn",        icon: <Clock3 size={16}/>,        cls: "bg-amber-50 text-amber-700 border-amber-200" },
-  { code: "NP", label: "Nghỉ phép",      icon: <CalendarOff size={16}/>,   cls: "bg-blue-50 text-blue-700 border-blue-200" },
-  { code: "NS", label: "Nghỉ sai",       icon: <AlertTriangle size={16}/>, cls: "bg-red-50 text-red-700 border-red-200" },
-  { code: "KL", label: "Không lương",    icon: <Ban size={16}/>,           cls: "bg-rose-50 text-rose-700 border-rose-200" },
-  { code: "QC", label: "Quên chấm công", icon: <HelpCircle size={16}/>,    cls: "bg-orange-50 text-orange-700 border-orange-200" },
+  { code: 'DM', label: 'Đi muộn',        icon: <Clock3 size={16}/>,        cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { code: 'NP', label: 'Nghỉ phép',      icon: <CalendarOff size={16}/>,   cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { code: 'NS', label: 'Nghỉ sai',       icon: <AlertTriangle size={16}/>, cls: 'bg-red-50 text-red-700 border-red-200' },
+  { code: 'KL', label: 'Không lương',    icon: <Ban size={16}/>,           cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+  { code: 'QC', label: 'Quên chấm công', icon: <HelpCircle size={16}/>,    cls: 'bg-orange-50 text-orange-700 border-orange-200' },
 ]
 
+type ApiResponse = {
+  month: string
+  scope: 'self' | 'company'
+  totalRows: number
+  tally: KpiBreakdown
+}
+
+const fetcher = (url: string): Promise<ApiResponse> =>
+  fetch(url, { cache: 'no-store' }).then(r => {
+    if (!r.ok) throw new Error('fetch failed')
+    return r.json()
+  })
+
+function currentMonthYYYYMM(): string {
+  const d = new Date()
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
 type Props = {
-  kpi: KpiBreakdown
+  /** Fallback values used on first paint before SWR settles. */
+  initialKpi?: KpiBreakdown
   title?: string
   subtitle?: string
 }
 
 export default function AttendanceKpiPanel({
-  kpi,
-  title = "KPI chuyên cần tháng này",
-  subtitle = "Số lượt theo từng loại",
+  initialKpi,
+  title = 'KPI chuyên cần',
+  subtitle,
 }: Props) {
+  const [month, setMonth] = useState<string>(currentMonthYYYYMM())
+
+  const { data, error, isLoading, mutate } = useSWR<ApiResponse>(
+    `/api/dashboard/attendance-kpi?month=${month}`,
+    fetcher,
+    {
+      // Critical for "đồng bộ với dữ liệu gốc": always re-fetch on window focus,
+      // e.g. after the user navigates back from /chamcong.
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      refreshInterval: 60_000,
+      dedupingInterval: 2_000,
+    }
+  )
+
+  const tally: KpiBreakdown = data?.tally ?? initialKpi ?? { DM: 0, NP: 0, NS: 0, KL: 0, QC: 0 }
+  const totalRows = data?.totalRows ?? 0
+  const scopeLabel =
+    data?.scope === 'self'
+      ? 'Dữ liệu cá nhân'
+      : data?.scope === 'company'
+        ? 'Toàn công ty'
+        : ''
+
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
         <div>
           <div className="text-sm font-bold text-gray-900">{title}</div>
-          <div className="text-[11px] text-gray-400 mt-0.5">{subtitle}</div>
+          <div className="text-[11px] text-gray-400 mt-0.5">
+            {subtitle ?? (scopeLabel ? `${scopeLabel} · ${totalRows} ngày có vi phạm` : 'Đang đồng bộ...')}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="month"
+            value={month}
+            onChange={e => setMonth(e.target.value)}
+            className="border border-gray-200 rounded-md px-2 py-1 text-xs h-7 focus:outline-none focus:ring-1 focus:ring-blue-400"
+          />
+          <button
+            onClick={() => mutate()}
+            disabled={isLoading}
+            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 h-7"
+            title="Đồng bộ lại từ dữ liệu gốc"
+          >
+            <RefreshCw size={11} className={isLoading ? 'animate-spin' : ''} />
+            Đồng bộ
+          </button>
         </div>
       </div>
+
+      {error && (
+        <div className="text-[11px] text-red-500 mb-2">Lỗi tải dữ liệu KPI</div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5">
         {CARDS.map(c => (
           <div
@@ -48,7 +125,7 @@ export default function AttendanceKpiPanel({
                 {c.code} · {c.label}
               </div>
               <div className="text-lg font-bold leading-none mt-0.5 tabular-nums">
-                {kpi[c.code]}
+                {tally[c.code]}
               </div>
             </div>
           </div>

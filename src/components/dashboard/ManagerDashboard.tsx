@@ -1,6 +1,7 @@
 import { Users, Clock, CalendarDays } from "lucide-react"
 import StatCard from "./StatCard"
 import AttendanceKpiPanel from "./AttendanceKpiPanel"
+import SalaryCashflowChart from "./SalaryCashflowChart"
 import type { ManagerStats } from "@/app/_lib/dashboard-queries"
 
 const STATUS_LABEL: Record<string, string> = {
@@ -45,9 +46,11 @@ export default function ManagerDashboard({ stats, userName }: { stats: ManagerSt
       </div>
 
       <AttendanceKpiPanel
-        kpi={stats.attendanceKpi}
-        subtitle={`KPI chuyên cần toàn công ty · tháng ${stats.currentMonth}`}
+        initialKpi={stats.attendanceKpi}
+        title="KPI chuyên cần tháng"
       />
+
+      <SalaryCashflowChart title="Dòng tiền lương theo ngày / tháng / năm" />
 
       <div className="bg-white border border-gray-200 rounded-xl p-5">
         <div className="text-sm font-bold text-gray-900 mb-3">Trạng thái bảng lương tháng {stats.currentMonth}</div>

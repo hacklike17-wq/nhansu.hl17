@@ -103,9 +103,8 @@ export default function EmployeeDashboard({ stats, userName }: { stats: Employee
       </div>
 
       <AttendanceKpiPanel
-        kpi={stats.myAttendanceKpi}
+        initialKpi={stats.myAttendanceKpi}
         title="KPI chuyên cần của tôi"
-        subtitle={`Tổng lượt vi phạm chuyên cần · tháng ${stats.currentMonth}`}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
