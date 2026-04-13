@@ -10,6 +10,7 @@ import { fmtVND } from '@/lib/format'
 import { X, RefreshCw, CheckCircle, Clock, Banknote, Plus, Trash2, Download, AlertTriangle } from 'lucide-react'
 import { STATUS_MAP, COL_STYLE, MANUAL_INPUT_MAP } from './_lib/constants'
 import { buildRowVars, renderCell } from './_lib/row-helpers'
+import PersonalSalaryView from '@/components/payroll/PersonalSalaryView'
 
 export default function LuongPage() {
   const { user, hasPermission } = useAuth()
@@ -206,33 +207,24 @@ export default function LuongPage() {
     setStatusModal(null)
   }
 
-  /* ── Employee self-view rows (data-driven: ALL salary columns) ── */
-  function selfViewRows(p: any): Array<{ label: string; value: string; highlight: boolean; deduction: boolean }> {
-    const rows: Array<{ label: string; value: string; highlight: boolean; deduction: boolean }> = []
-    const rowVars = buildRowVars(p, salaryColumns)
-
-    for (const col of salaryColumns) {
-      const raw = rowVars[col.key] ?? 0
-      const style = COL_STYLE[col.key] ?? 'currency'
-      // Skip columns with 0 value unless it's a number-style column or total
-      if (raw === 0 && style !== 'number' && col.key !== 'tong_thuc_nhan') continue
-      let value: string
-      if (style === 'number') value = raw.toFixed(1)
-      else value = `${fmtVND(raw)} đ`
-      rows.push({
-        label: col.name,
-        value,
-        highlight: col.key === 'tong_thuc_nhan',
-        deduction: style === 'deduction',
-      })
-    }
-
-    // Append insurance + tax — only when master toggle is ON
-    const totalBH = Number(p.bhxhEmployee) + Number(p.bhytEmployee) + Number(p.bhtnEmployee)
-    if (showBhCols && totalBH > 0) rows.push({ label: 'Bảo hiểm (NV đóng)', value: `${fmtVND(totalBH)} đ`, highlight: false, deduction: true })
-    if (showPitCol && Number(p.pitTax) > 0) rows.push({ label: 'Thuế TNCN', value: `${fmtVND(Number(p.pitTax))} đ`, highlight: false, deduction: true })
-
-    return rows
+  /* ─── Employee personal view — bypass the admin table entirely ─── */
+  if (!isManager) {
+    const myPayroll = payrolls[0] ?? null
+    return (
+      <PageShell breadcrumb="Nhân sự" title="Lương cá nhân">
+        <PersonalSalaryView
+          payroll={myPayroll as any}
+          month={month}
+          onMonthChange={setMonth}
+          showBhCols={showBhCols}
+          showPitCol={showPitCol}
+          onSubmitForApproval={async (id) => {
+            await updatePayrollStatus(id, 'PENDING' as any)
+            await mutate()
+          }}
+        />
+      </PageShell>
+    )
   }
 
   return (
@@ -327,30 +319,6 @@ export default function LuongPage() {
         </div>
       )}
 
-      {/* ── Employee self-view ── */}
-      {!isManager && payrolls.length > 0 && (() => {
-        const p = payrolls[0]
-        const rows = selfViewRows(p)
-        return (
-          <div className="bg-white border border-gray-200 rounded-2xl p-6 max-w-lg mb-4">
-            <div className="mb-5">
-              <div className="text-base font-semibold text-gray-900">{p.employee?.fullName}</div>
-              <div className="text-xs text-gray-400 mt-0.5">{p.employee?.department} · {month}</div>
-              <span className={`inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full mt-1 ${STATUS_MAP[p.status]?.cls ?? ''}`}>
-                {STATUS_MAP[p.status]?.label ?? p.status}
-              </span>
-            </div>
-            <div className="space-y-2.5">
-              {rows.map(row => (
-                <div key={row.label} className={`flex items-center justify-between ${row.highlight ? 'border-t border-gray-100 pt-2.5 mt-2.5' : ''}`}>
-                  <span className={`text-xs ${row.highlight ? 'font-medium text-gray-600' : row.deduction ? 'text-red-400' : 'text-gray-400'}`}>{row.label}</span>
-                  <span className={`font-semibold ${row.highlight ? 'text-2xl text-blue-600' : row.deduction ? 'text-sm text-red-500' : 'text-gray-800 text-sm'}`}>{row.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )
-      })()}
 
       {/* ── Manager: Dynamic Table ── */}
       {isManager && (
