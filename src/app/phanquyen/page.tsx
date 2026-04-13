@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import PageShell from '@/components/layout/PageShell'
 import { ALL_MODULES, ALL_ACTIONS, CANONICAL_ROLES, normalizeRole } from '@/constants/data'
 import { useEmployees } from '@/hooks/useEmployees'
+import { useAuth } from '@/components/auth/AuthProvider'
 import type { PermissionGroup, UserRole } from '@/types'
 import { Shield, ShieldCheck, ShieldAlert, Pencil, Plus, Check, Users, X } from 'lucide-react'
 
@@ -39,6 +40,7 @@ function groupHasPerm(g: PermissionGroup, perm: string) {
 
 export default function PhanQuyenPage() {
   const { employees, mutate: mutateEmps } = useEmployees()
+  const { refreshPermissions } = useAuth()
   const [groups, setGroups] = useState<PermissionGroup[]>([])
   const [groupsLoading, setGroupsLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -97,6 +99,8 @@ export default function PhanQuyenPage() {
       const updated = await res.json()
       setGroups(prev => prev.map(g => g.id === updated.id ? updated : g))
       setEditGroup(null)
+      // Refresh current user's permissions in case they just edited their own group
+      await refreshPermissions()
     } catch (e) {
       console.error('saveGroup error:', e)
       alert('Lưu thất bại')
@@ -146,6 +150,7 @@ export default function PhanQuyenPage() {
       })
       if (!res.ok) throw new Error(await res.text())
       await mutateEmps()
+      await refreshPermissions()
       setEditEmpId(null)
     } catch (e) {
       console.error('save emp perms error:', e)
