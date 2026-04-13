@@ -1,36 +1,212 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# nhansu.hl17 — ADMIN_HL17
+
+**Hệ thống quản trị nhân sự** — Vietnamese HR management SaaS for SMEs.
+
+Built with Next.js 16, React 19, TypeScript, Tailwind CSS v4, shadcn/ui, PostgreSQL (Prisma 7), and Auth.js v5.
+
+---
+
+## What This Is
+
+ADMIN_HL17 is a full-stack HR and payroll management system for Vietnamese SMEs. The system covers two primary domains:
+
+- **Nhân sự (HR):** Employee records, attendance (chấm công), payroll (lương & thưởng), leave requests (nghỉ phép), recruitment (tuyển dụng)
+- **Tài chính (Finance):** Revenue (doanh thu), expenses (chi phí), cashflow (dòng tiền), budget (ngân sách), debt/receivables (công nợ)
+
+All currency is Vietnamese Dong (VND). All UI labels and status strings are in Vietnamese.
+
+**Current status:** Full-stack production system with PostgreSQL backend, Auth.js v5 JWT sessions, RBAC middleware, and a complete 13-phase payroll engine.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 16.2.3 (App Router, Turbopack) |
+| UI | React 19.2.4, TypeScript 5, Tailwind CSS v4, shadcn/ui |
+| Authentication | Auth.js v5 (next-auth@beta) + JWT sessions |
+| Database | PostgreSQL via Prisma 7 + `@prisma/adapter-pg` |
+| ORM | Prisma 7.x (generated client at `src/generated/prisma`) |
+| Data fetching | SWR (client hooks) + Route Handlers |
+| Validation | Zod 4 |
+| Formula engine | expr-eval (sandboxed, topological sort, circular detection) |
+| Excel export | ExcelJS |
+| Password hashing | bcryptjs (cost 12) |
+| Charts | Recharts |
+| Icons | Lucide React |
+| Testing | Vitest (24 unit tests for formula engine) |
+
+---
 
 ## Getting Started
 
-First, run the development server:
+**Requirements:** Node.js 20+, PostgreSQL (local or [Neon](https://neon.tech))
+
+**1. Install dependencies**
+
+```bash
+npm install
+```
+
+**2. Configure environment**
+
+```bash
+cp .claude/.env.example .env.local
+# Edit .env.local:
+# DATABASE_URL="postgresql://user:pass@localhost:5432/nhansu_hl17"
+# NEXTAUTH_SECRET="$(openssl rand -base64 32)"
+```
+
+**3. Set up database**
+
+```bash
+npm run db:migrate   # apply schema migrations
+npm run db:seed      # seed initial data (development only)
+```
+
+**4. Start development server**
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). Default credentials are in `src/constants/data.ts` (`EMPLOYEES` array, `accountEmail` + `accountPassword` fields).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Available Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run dev              # development server (Turbopack)
+npm run build            # production build
+npm run start            # production server
+npm run lint             # ESLint
+npm run db:migrate       # prisma migrate dev
+npm run db:seed          # seed database (development only)
+npm run db:reset         # prisma migrate reset --force
+npm run test             # vitest run
+npm run test:watch       # vitest watch mode
+npm run test:coverage    # vitest coverage
+```
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## Project Structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/
+├── app/                    # Next.js App Router
+│   ├── api/                # Route Handlers (payroll, employees, leave, export, etc.)
+│   │   ├── auth/[...nextauth]/   # Auth.js handler
+│   │   ├── employees/            # CRUD + [id]
+│   │   ├── payroll/              # Generate, PATCH status, recalculate, salary-values
+│   │   ├── leave-requests/       # CRUD + [id] approve/reject
+│   │   ├── work-units/           # Attendance CRUD
+│   │   ├── deductions/           # Deduction events
+│   │   ├── overtime/             # Overtime entries
+│   │   ├── kpi-violations/       # KPI violations
+│   │   ├── salary-columns/       # Salary config CRUD
+│   │   ├── permission-groups/    # RBAC groups
+│   │   └── export/payroll/       # Excel export (ExcelJS)
+│   └── <module>/page.tsx   # Module pages (client components using SWR hooks)
+├── auth.config.ts          # Edge-safe Auth.js config (JWT strategy, RBAC callbacks)
+├── auth.ts                 # Full Auth.js config (PrismaAdapter + Credentials)
+├── middleware.ts            # Edge RBAC enforcement
+├── components/
+│   ├── auth/               # AuthProvider (SessionProvider bridge), ProtectedLayout
+│   ├── layout/             # Sidebar, Topbar, PageShell, ThemeProvider
+│   └── ui/                 # shadcn/ui primitives
+├── constants/
+│   └── data.ts             # PERMISSION_GROUPS, ROUTE_PERMISSION, hasPermission(), NAV_SECTIONS
+├── hooks/                  # SWR data hooks: usePayroll, useEmployees, useWorkUnits, etc.
+├── lib/
+│   ├── db.ts               # Prisma client singleton (PrismaPg adapter)
+│   ├── formula.ts          # evalFormula(), topologicalSort(), detectCircular(), validateFormula()
+│   ├── schemas/            # Zod schemas: auth, employee, payroll, attendance
+│   ├── services/
+│   │   └── payroll.service.ts   # calculatePayroll(), upsertPayroll(), anomaly detection
+│   ├── format.ts           # fmtVND(), fmtMoney(), fmtDate()
+│   └── __tests__/          # Vitest unit tests (formula engine — 24 tests)
+├── generated/prisma/       # Prisma generated client (auto, do not edit)
+└── types/
+    ├── index.ts            # TypeScript domain types
+    └── next-auth.d.ts      # Session type augmentation
+prisma/
+├── schema.prisma           # Single-file schema (Prisma 7)
+├── migrations/             # Migration history
+├── seed.ts                 # Seed entry point
+└── seed-salary-columns.ts  # Salary column seed data
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Modules and Routes
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Route | Vietnamese Name | Description |
+|-------|----------------|-------------|
+| `/` | Dashboard | KPI cards, charts, cashflow, employee status, budget |
+| `/nhanvien` | Nhân viên | Employee roster, profiles, account management |
+| `/chamcong` | Chấm công | Work units (công số nhận) + overtime + KPI violations |
+| `/luong` | Lương & thưởng | Payroll with DRAFT→PENDING→APPROVED→LOCKED→PAID workflow |
+| `/nghiphep` | Nghỉ phép | Leave requests and deduction events |
+| `/tuyendung` | Tuyển dụng | Recruitment pipeline |
+| `/phanquyen` | Phân quyền | Role and permission group management |
+| `/caidat` | Cài đặt | Company profile, PITBracket, InsuranceRate, salary columns |
+| `/doi-mat-khau` | Đổi mật khẩu | Password change |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## Payroll Engine (13 Phases Complete)
+
+The payroll module has been through 13 upgrade phases:
+
+- **Formula engine** (expr-eval, topological sort, circular detection, `FormulaError` contract)
+- **Salary Config UI** (CRUD columns with formula preview and validation)
+- **Attendance sync** (auto-recalc on WorkUnit changes; `needsRecalc` flag)
+- **Full CRUD** (generate missing payrolls, add employee, delete DRAFT)
+- **Manual inputs** (`phuCap`, `thuong`, `phat` via `SalaryValue` model)
+- **Backend-authoritative calculation** (no client-side math)
+- **Workflow** (DRAFT→PENDING→APPROVED→LOCKED→PAID) + concurrency guard + `AuditLog` + immutable `snapshot`
+- **`SalaryColumnVersion`** (formula versioning with effective date) + 24 Vitest unit tests
+- **Anomaly detection** (negative net, excess attendance, large change warning) + Excel export (ExcelJS)
+- **Multi-tenant RBAC** (`companyId` audit, employee self-scoping, permission matrix)
+
+---
+
+## Access Control
+
+| Role | Key | Payroll Access |
+|------|-----|---------------|
+| Boss Admin | `boss_admin` | Full (`*`) |
+| Administrator | `admin` | `luong.*` (all) |
+| HR Manager | `hr_manager` | `luong.view`, `luong.edit` only |
+| Accountant | `accountant` | `luong.view`, `luong.approve`, `luong.export` |
+| Employee | `employee` | Own payslip only (`luong.view`) |
+
+Route RBAC is enforced in `middleware.ts` at Edge runtime via the `authorized` callback. Permissions use `<module>.<action>` format.
+
+---
+
+## Key Architecture Decisions
+
+- **JWT sessions** (not DB sessions): `session: { strategy: "jwt" }` in `auth.config.ts` — custom claims injected via `jwt` callback.
+- **SWR for client data fetching**: All module pages use `useSWR` hooks hitting Route Handlers. No Server Components for data.
+- **Service layer in Route Handlers**: `payroll.service.ts` contains all business logic — Route Handlers call services, not Prisma directly.
+- **`Decimal @db.Decimal(15,0)` for VND**: No floating-point errors; converted to `Number` for JSON serialization.
+- **Soft delete on Employee**: `deletedAt` field — resigned employees preserved for payroll audit trail.
+- **PITBracket + InsuranceRate in DB**: Editable via Settings UI — no redeploy needed for tax law changes.
+- **`needsRecalc` flag**: Set `true` on attendance mutations; cleared after recalculation. Never recalculates APPROVED/LOCKED/PAID rows.
+- **Immutable payroll snapshot**: At LOCK time, full calc snapshot (vars, formula results, insurance rates, PIT brackets) is captured in `Payroll.snapshot` JSON.
+- **Anomaly detection**: Error-level anomalies (negative net, tax > gross) block PENDING transition; warnings are shown but do not block.
+- **Formula versioning**: `SalaryColumnVersion` records formula changes with `effectiveFrom` date — historical payroll recalculation uses the formula that was active at that month.
+
+---
+
+## Documentation
+
+Full documentation in `docs/`:
+
+- `docs/project-overview-pdr.md` — Product requirements, functional specs
+- `docs/codebase-summary.md` — File structure, modules, DB schema, dependencies
+- `docs/code-standards.md` — Patterns, conventions, service layer, approval pattern, auth patterns
+- `docs/system-architecture.md` — Tech stack, component relationships, data flow, security
+- `docs/project-roadmap.md` — Phase history (all 13 payroll phases complete) and future roadmap

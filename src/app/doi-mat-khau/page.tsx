@@ -4,8 +4,21 @@ import PageShell from '@/components/layout/PageShell'
 import { useAuth } from '@/components/auth/AuthProvider'
 import { Lock, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react'
 
+async function apiChangePassword(oldPassword: string, newPassword: string) {
+  const res = await fetch('/api/auth/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ oldPassword, newPassword }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error ?? 'Đổi mật khẩu thất bại')
+  }
+  return res.json()
+}
+
 export default function DoiMatKhauPage() {
-  const { user, changePassword } = useAuth()
+  const { user } = useAuth()
   const [oldPw, setOldPw] = useState('')
   const [newPw, setNewPw] = useState('')
   const [confirmPw, setConfirmPw] = useState('')
@@ -13,8 +26,9 @@ export default function DoiMatKhauPage() {
   const [showNew, setShowNew] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [loading, setLoading] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setSuccess(false)
@@ -36,14 +50,17 @@ export default function DoiMatKhauPage() {
       return
     }
 
-    const result = changePassword(oldPw, newPw)
-    if (result.ok) {
+    setLoading(true)
+    try {
+      await apiChangePassword(oldPw, newPw)
       setSuccess(true)
       setOldPw('')
       setNewPw('')
       setConfirmPw('')
-    } else {
-      setError(result.error || 'Đổi mật khẩu thất bại')
+    } catch (e: any) {
+      setError(e.message ?? 'Đổi mật khẩu thất bại')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -57,7 +74,7 @@ export default function DoiMatKhauPage() {
             </div>
             <div>
               <h3 className="text-sm font-bold text-gray-900">Đổi mật khẩu</h3>
-              <p className="text-[11px] text-gray-400">Tài khoản: {user?.accountEmail}</p>
+              <p className="text-[11px] text-gray-400">Tài khoản: {user?.email}</p>
             </div>
           </div>
 
@@ -117,8 +134,8 @@ export default function DoiMatKhauPage() {
               </div>
             )}
 
-            <button type="submit" className="w-full py-2.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700">
-              Đổi mật khẩu
+            <button type="submit" disabled={loading} className="w-full py-2.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-60">
+              {loading ? 'Đang xử lý...' : 'Đổi mật khẩu'}
             </button>
           </form>
         </div>

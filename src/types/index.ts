@@ -72,6 +72,7 @@ export type Employee = {
   status: 'working' | 'half' | 'leave' | 'remote' | 'resigned'
   joinDate: string
   salary: number
+  responsibilitySalary: number
   bankAccount: string
   bankName: string
   taxCode: string
@@ -88,6 +89,31 @@ export type Employee = {
   accountRole: UserRole
   accountPermissions: string[]
   accountStatus: 'active' | 'locked' | 'no_account'
+}
+
+/* ─── Work Units (Công số nhận) ─── */
+export type WorkUnit = {
+  id: string
+  employeeId: string
+  employeeName: string
+  date: string
+  units: number
+  note: string
+}
+
+/* ─── Deduction Events (Công số trừ) ─── */
+export type DeductionEvent = {
+  id: string
+  employeeId: string
+  employeeName: string
+  date: string
+  type: 'nghi_ngay' | 'di_muon' | 've_som' | 'overtime'
+  delta: number
+  reason: string
+  status: 'pending' | 'approved' | 'rejected'
+  submittedAt: string
+  approvedBy?: string
+  approvedAt?: string
 }
 
 /* ─── Attendance ─── */
@@ -250,6 +276,51 @@ export type ReportItem = {
   downloadUrl: string
 }
 
+/* ─── Overtime (Giờ tăng ca) ─── */
+export type OvertimeEntry = {
+  id: string
+  employeeId: string
+  employeeName: string
+  date: string   // YYYY-MM-DD
+  hours: number  // e.g. 2, 3.5
+  note: string
+}
+
+/* ─── KPI Violations (Chuyên cần) ─── */
+export type KpiViolationType = 'DM' | 'NP' | 'NS' | 'KL' | 'QC'
+
+export type KpiViolation = {
+  id: string
+  employeeId: string
+  employeeName: string
+  date: string
+  types: KpiViolationType[]
+  note: string
+}
+
+/* ─── Salary Config (dynamic columns) ─── */
+export type CalcMode = 'none' | 'add_to_net' | 'subtract_from_net'
+
+export type SalaryColumn = {
+  id: string
+  name: string
+  key: string         // variable name used in formulas (snake_case)
+  type: 'number' | 'formula'
+  formula?: string    // e.g. "net_cong_so * luong_co_ban / 26 + thuong"
+  isEditable: boolean // admin can input per-employee value each month
+  isSystem: boolean   // built-in columns that cannot be deleted
+  calcMode: CalcMode  // how column contributes to tong_thuc_nhan
+  order: number
+}
+
+export type SalaryValue = {
+  id: string
+  employeeId: string
+  month: string       // YYYY-MM
+  columnKey: string
+  value: number
+}
+
 /* ─── Settings ─── */
 export type CompanySettings = {
   name: string
@@ -277,4 +348,7 @@ export type SystemConfig = {
   leavePerYear: number
   currency: string
   locale: string
+  enableInsuranceTax: boolean  // master toggle: tính + hiển thị BH NV & Thuế TNCN
+  showBhColumns: boolean       // legacy: hiển thị cột BH NV (chỉ UI, không ảnh hưởng tính toán)
+  showPitColumn: boolean       // legacy: hiển thị cột Thuế TNCN (chỉ UI)
 }

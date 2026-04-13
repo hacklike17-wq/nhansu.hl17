@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { NAV_SECTIONS, ROUTE_PERMISSION, hasPermission } from '@/constants/data'
 import { useAuth } from '@/components/auth/AuthProvider'
+import { signOut } from 'next-auth/react'
 import {
   LayoutGrid, BarChart2, Users, Calendar, Clock, ArrowRight,
   TrendingUp, DollarSign, ArrowLeftRight, Lock, FileText,
@@ -43,7 +44,7 @@ const ROLE_LABEL: Record<string, string> = {
 
 export default function Sidebar() {
   const pathname = usePathname()
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
 
   const initials = user?.name
     ? user.name.split(' ').slice(-2).map(w => w[0]).join('').toUpperCase()
@@ -58,7 +59,7 @@ export default function Sidebar() {
             <span className="text-white text-[11px] font-black tracking-tighter leading-none">HL<br/>17</span>
           </div>
           <div>
-            <div className="text-sm font-bold text-gray-900">ADMIN_HL17</div>
+            <div className="text-sm font-bold text-gray-900">nhansu.hl17</div>
             <div className="text-[11px] text-gray-400 mt-0.5">Quản trị doanh nghiệp</div>
           </div>
         </div>
@@ -129,7 +130,7 @@ export default function Sidebar() {
           <div className="text-[10px] text-gray-400">{ROLE_LABEL[user?.role || 'boss_admin']}</div>
         </div>
         <button
-          onClick={logout}
+          onClick={() => signOut({ callbackUrl: '/login' })}
           className="text-gray-400 hover:text-red-500 transition-colors"
           title="Đăng xuất"
         >

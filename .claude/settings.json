@@ -1,0 +1,27 @@
+{
+  "includeCoAuthoredBy": false,
+  "permissions": {
+    "additionalDirectories": [
+      "/Users/hoahenry/Desktop/nhansu.hl17",
+      "/Users/hoahenry/Desktop/nhansu.hl17/plans/260412-production-migration"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Glob|Grep|Read|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/scout-block.js"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "node .claude/statusline.js",
+    "padding": 0
+  }
+}

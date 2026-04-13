@@ -1,27 +1,40 @@
 'use client'
-import { useState, useRef, useEffect } from 'react'
+import { useState } from 'react'
 import PageShell from '@/components/layout/PageShell'
-import { DEPARTMENTS, PERMISSION_GROUPS } from '@/constants/data'
+import { DEPARTMENTS } from '@/constants/data'
 import { useAuth } from '@/components/auth/AuthProvider'
+import { useEmployees } from '@/hooks/useEmployees'
 import { fmtVND, fmtDate } from '@/lib/format'
-import type { Employee } from '@/types'
-import { Search, Download, Plus, Eye, Pencil, Trash2, X, Check, KeyRound, Shuffle } from 'lucide-react'
+import { Search, Download, Lock } from 'lucide-react'
 
 /* ─── Constants ─── */
 const STATUS_MAP: Record<string, { label: string; cls: string }> = {
-  working:  { label: 'Đang làm',  cls: 'bg-green-50 text-green-700 border-green-200' },
-  half:     { label: 'Nửa ngày',  cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-  leave:    { label: 'Nghỉ phép', cls: 'bg-red-50 text-red-700 border-red-200' },
-  remote:   { label: 'Remote',    cls: 'bg-blue-50 text-blue-700 border-blue-200' },
-  resigned: { label: 'Đã nghỉ',   cls: 'bg-gray-100 text-gray-500 border-gray-200' },
+  WORKING:  { label: 'Đang làm',  cls: 'bg-green-50 text-green-700 border-green-200' },
+  HALF:     { label: 'Nửa ngày',  cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  LEAVE:    { label: 'Nghỉ phép', cls: 'bg-red-50 text-red-700 border-red-200' },
+  REMOTE:   { label: 'Remote',    cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+  RESIGNED: { label: 'Đã nghỉ',   cls: 'bg-gray-100 text-gray-500 border-gray-200' },
+}
+
+const CONTRACT_MAP: Record<string, string> = {
+  FULL_TIME: 'Toàn thời gian',
+  PART_TIME: 'Bán thời gian',
+  INTERN:    'Thực tập',
+  FREELANCE: 'Freelance',
 }
 
 const AVATAR_COLORS = ['bg-blue-600','bg-green-600','bg-purple-600','bg-amber-600','bg-pink-600','bg-cyan-600','bg-red-500','bg-indigo-600']
 
+function toDateStr(val: string | Date | null | undefined): string {
+  if (!val) return ''
+  if (val instanceof Date) return val.toISOString().slice(0, 10)
+  return String(val).slice(0, 10)
+}
+
 function getInitials(name: string) {
-  const parts = name.trim().split(/\s+/)
+  const parts = (name || '').trim().split(/\s+/)
   if (parts.length >= 2) return (parts[parts.length - 2][0] + parts[parts.length - 1][0]).toUpperCase()
-  return name.slice(0, 2).toUpperCase()
+  return (name || '').slice(0, 2).toUpperCase()
 }
 
 function avatarColor(id: string) {
@@ -30,189 +43,146 @@ function avatarColor(id: string) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
 
-function genPassword() {
-  const chars = 'abcdefghijkmnpqrstuvwxyz23456789'
-  let pw = ''
-  for (let i = 0; i < 8; i++) pw += chars[Math.floor(Math.random() * chars.length)]
-  return pw
-}
+/* ─── Employee Self-Profile ─── */
+function EmployeeSelfProfile({ empId }: { empId: string }) {
+  const { employees } = useEmployees()
+  const emp = employees.find((e: any) => e.id === empId)
 
-const EMPTY_FORM: Partial<Employee> = {
-  name: '', email: '', phone: '', dob: '', gender: 'male',
-  department: 'Hacklike17', departmentId: 'D001', deptColor: 'blue',
-  position: '', contractType: 'fulltime', joinDate: '', salary: 0,
-  address: '', bankAccount: '--', bankName: '--', taxCode: '--',
-  socialInsurance: '--', hours: '--', role: '', status: 'working',
-  accountEmail: '', accountPassword: '', accountRole: 'employee',
-  accountPermissions: [], accountStatus: 'no_account',
-}
+  const ALL_FIELDS: { key: string; label: string; sensitive?: boolean }[] = [
+    { key: 'fullName',    label: 'Họ tên' },
+    { key: 'email',       label: 'Email' },
+    { key: 'phone',       label: 'Số điện thoại' },
+    { key: 'dob',         label: 'Ngày sinh' },
+    { key: 'gender',      label: 'Giới tính' },
+    { key: 'address',     label: 'Địa chỉ' },
+    { key: 'department',  label: 'Phòng ban' },
+    { key: 'position',    label: 'Vị trí' },
+    { key: 'startDate',   label: 'Ngày vào làm' },
+    { key: 'contractType',label: 'Loại hợp đồng' },
+    { key: 'bankAccount', label: 'Số tài khoản', sensitive: true },
+    { key: 'bankName',    label: 'Ngân hàng', sensitive: true },
+    { key: 'taxCode',     label: 'Mã số thuế', sensitive: true },
+    { key: 'bhxhCode',    label: 'Bảo hiểm XH', sensitive: true },
+  ]
 
-/* ─── Inline Edit Cell ─── */
-function InlineInput({ value, onSave, type = 'text' }: { value: string; onSave: (v: string) => void; type?: string }) {
-  const [editing, setEditing] = useState(false)
-  const [val, setVal] = useState(value)
-  const ref = useRef<HTMLInputElement>(null)
-
-  useEffect(() => { if (editing) ref.current?.focus() }, [editing])
-  useEffect(() => { setVal(value) }, [value])
-
-  if (!editing) {
-    return (
-      <span
-        onClick={(e) => { e.stopPropagation(); setEditing(true) }}
-        className="cursor-pointer hover:bg-blue-50 hover:text-blue-700 px-1 -mx-1 rounded transition-colors"
-        title="Click để sửa"
-      >
-        {value || '—'}
-      </span>
-    )
-  }
-
-  const save = () => { onSave(val); setEditing(false) }
-  const cancel = () => { setVal(value); setEditing(false) }
-
-  return (
-    <input
-      ref={ref}
-      type={type}
-      value={val}
-      onChange={e => setVal(e.target.value)}
-      onBlur={save}
-      onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
-      onClick={e => e.stopPropagation()}
-      className="w-full px-1.5 py-0.5 border border-blue-400 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-    />
+  const [visibleFields, setVisibleFields] = useState<Set<string>>(
+    () => new Set(ALL_FIELDS.filter(f => !f.sensitive).map(f => f.key))
   )
-}
+  const [showFieldPicker, setShowFieldPicker] = useState(false)
 
-function InlineStatus({ value, onSave }: { value: string; onSave: (v: string) => void }) {
-  const [editing, setEditing] = useState(false)
-  const ref = useRef<HTMLSelectElement>(null)
-
-  useEffect(() => { if (editing) ref.current?.focus() }, [editing])
-
-  const st = STATUS_MAP[value] || STATUS_MAP.working
-
-  if (!editing) {
-    return (
-      <span
-        onClick={(e) => { e.stopPropagation(); setEditing(true) }}
-        className={`inline-block px-2 py-0.5 rounded border text-[10px] font-semibold cursor-pointer hover:opacity-80 transition-opacity ${st.cls}`}
-        title="Click để đổi trạng thái"
-      >
-        {st.label}
-      </span>
-    )
+  const toggleField = (key: string) => {
+    setVisibleFields(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   }
 
+  if (!emp) return <div className="p-8 text-gray-500 text-sm">Không tìm thấy thông tin nhân viên.</div>
+
+  function renderValue(key: string, value: unknown): string {
+    if (value === undefined || value === null || value === '') return '—'
+    if (key === 'gender') return value === 'male' ? 'Nam' : 'Nữ'
+    if (key === 'contractType') return CONTRACT_MAP[value as string] ?? String(value)
+    if (key === 'dob' || key === 'startDate') return fmtDate(toDateStr(value as string)) || '—'
+    return String(value)
+  }
+
+  const initials = getInitials(emp.fullName)
+
   return (
-    <select
-      ref={ref}
-      value={value}
-      onChange={e => { onSave(e.target.value); setEditing(false) }}
-      onBlur={() => setEditing(false)}
-      onClick={e => e.stopPropagation()}
-      className="text-[10px] border border-blue-400 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-    >
-      {Object.entries(STATUS_MAP).map(([k, v]) => (
-        <option key={k} value={k}>{v.label}</option>
-      ))}
-    </select>
+    <PageShell breadcrumb="Nhân sự" title="Hồ sơ của tôi">
+      <div className="flex justify-end mb-4">
+        <button
+          onClick={() => setShowFieldPicker(v => !v)}
+          className="px-3 py-2 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 font-medium"
+        >
+          Tuỳ chỉnh hiển thị
+        </button>
+      </div>
+
+      {showFieldPicker && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+          <div className="text-sm font-semibold text-gray-800 mb-3">Chọn trường hiển thị</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+            {ALL_FIELDS.map(f => (
+              <label key={f.key} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={visibleFields.has(f.key)}
+                  onChange={() => toggleField(f.key)}
+                  className="rounded"
+                />
+                <span>{f.label}</span>
+                {f.sensitive && <Lock size={11} className="text-gray-400" />}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col md:flex-row gap-6">
+        <div className="md:w-1/3 flex flex-col items-center text-center gap-3 pt-2">
+          <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center text-white text-xl font-bold shrink-0">
+            {initials}
+          </div>
+          <div>
+            <div className="text-base font-bold text-gray-900">{emp.fullName}</div>
+            {emp.position && <div className="text-xs text-gray-500 mt-0.5">{emp.position}</div>}
+            {emp.department && (
+              <span className="inline-flex mt-2 bg-blue-50 text-blue-700 text-xs font-medium px-2.5 py-1 rounded-full">
+                {emp.department}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="md:w-2/3">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+            {ALL_FIELDS.filter(f => visibleFields.has(f.key)).map(f => (
+              <div key={f.key}>
+                <div className="text-xs text-gray-400 mb-0.5">{f.label}</div>
+                <div className="text-sm font-medium text-gray-900">{renderValue(f.key, emp[f.key])}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </PageShell>
   )
 }
 
 /* ─── Main Page ─── */
 export default function NhanVienPage() {
-  const { employees, setEmployees } = useAuth()
+  const { user } = useAuth()
   const [search, setSearch] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
 
+  const { employees, isLoading } = useEmployees({ search, department: deptFilter })
+
   // Detail modal
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  // Form modal (add/edit)
-  const [formOpen, setFormOpen] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [formData, setFormData] = useState<Partial<Employee>>(EMPTY_FORM)
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
-
-  // Delete confirm
-  const [deleteId, setDeleteId] = useState<string | null>(null)
-
-  /* ── Helpers ── */
-  const updateField = (id: string, field: keyof Employee, value: string | number) => {
-    setEmployees(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e))
+  /* ── Employee self-profile early return ── */
+  if (user?.role === 'employee') {
+    return <EmployeeSelfProfile empId={user.employeeId ?? ''} />
   }
 
-  const filtered = employees.filter(e => {
-    if (search && !e.name.toLowerCase().includes(search.toLowerCase()) && !e.code.toLowerCase().includes(search.toLowerCase()) && !e.email.toLowerCase().includes(search.toLowerCase())) return false
-    if (deptFilter && e.departmentId !== deptFilter) return false
+  /* ── Helpers ── */
+  const filtered = employees.filter((e: any) => {
     if (statusFilter && e.status !== statusFilter) return false
     return true
   })
 
-  const detail = selectedId ? employees.find(e => e.id === selectedId) : null
-
-  /* ── Form actions ── */
-  const openAddForm = () => {
-    setEditingId(null)
-    setFormData({ ...EMPTY_FORM })
-    setFormErrors({})
-    setFormOpen(true)
-  }
-
-  const openEditForm = (emp: Employee) => {
-    setEditingId(emp.id)
-    setFormData({ ...emp })
-    setFormErrors({})
-    setFormOpen(true)
-    setSelectedId(null)
-  }
-
-  const handleFormChange = (field: string, value: string | number) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
-    if (formErrors[field]) setFormErrors(prev => { const n = { ...prev }; delete n[field]; return n })
-  }
-
-  const handleSubmit = () => {
-    const errors: Record<string, string> = {}
-    if (!formData.name?.trim()) errors.name = 'Bắt buộc'
-    if (!formData.email?.trim()) errors.email = 'Bắt buộc'
-    if (Object.keys(errors).length) { setFormErrors(errors); return }
-
-    if (editingId) {
-      setEmployees(prev => prev.map(e => e.id === editingId ? { ...e, ...formData } as Employee : e))
-    } else {
-      const maxNum = employees.reduce((max, e) => {
-        const n = parseInt(e.id.replace('E', ''), 10)
-        return n > max ? n : max
-      }, 0)
-      const newId = `E${String(maxNum + 1).padStart(3, '0')}`
-      const newCode = `NV${String(maxNum + 1).padStart(3, '0')}`
-      const newEmp: Employee = {
-        ...EMPTY_FORM,
-        ...formData,
-        id: newId,
-        code: newCode,
-      } as Employee
-      setEmployees(prev => [...prev, newEmp])
-    }
-    setFormOpen(false)
-  }
-
-  const handleDelete = () => {
-    if (deleteId) {
-      setEmployees(prev => prev.filter(e => e.id !== deleteId))
-      setDeleteId(null)
-    }
-  }
+  const detail = selectedId ? employees.find((e: any) => e.id === selectedId) : null
 
   /* ── Stats ── */
   const stats = [
     { label: 'Tổng nhân viên', value: employees.length },
-    { label: 'Đang làm việc', value: employees.filter(e => e.status === 'working' || e.status === 'remote').length },
-    { label: 'Nghỉ phép', value: employees.filter(e => e.status === 'leave').length },
+    { label: 'Đang làm việc', value: employees.filter((e: any) => e.status === 'WORKING' || e.status === 'REMOTE').length },
+    { label: 'Nghỉ phép', value: employees.filter((e: any) => e.status === 'LEAVE').length },
     { label: 'Phòng ban', value: DEPARTMENTS.length },
   ]
 
@@ -242,18 +212,15 @@ export default function NhanVienPage() {
           </div>
           <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="text-xs border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-gray-600">
             <option value="">Tất cả phòng ban</option>
-            {DEPARTMENTS.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            {DEPARTMENTS.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
           </select>
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="text-xs border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-gray-600">
             <option value="">Tất cả trạng thái</option>
             {Object.entries(STATUS_MAP).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto">
             <button className="flex items-center gap-1.5 px-3 py-2 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">
               <Download size={13} /> Xuất Excel
-            </button>
-            <button onClick={openAddForm} className="flex items-center gap-1.5 px-3 py-2 text-xs text-white bg-blue-600 rounded-lg hover:bg-blue-700">
-              <Plus size={13} /> Thêm nhân viên
             </button>
           </div>
         </div>
@@ -271,59 +238,40 @@ export default function NhanVienPage() {
                 <th className="text-center px-4 py-2.5 font-semibold text-gray-500">Trạng thái</th>
                 <th className="text-left px-4 py-2.5 font-semibold text-gray-500">Ngày sinh</th>
                 <th className="text-left px-4 py-2.5 font-semibold text-gray-500">Ngày vào</th>
-                <th className="text-center px-4 py-2.5 font-semibold text-gray-500 w-24">Thao tác</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map(emp => (
-                <tr key={emp.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors group">
-                  {/* Avatar */}
+              {isLoading ? (
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Đang tải...</td></tr>
+              ) : filtered.map((emp: any) => (
+                <tr
+                  key={emp.id}
+                  onClick={() => setSelectedId(emp.id)}
+                  className="border-b border-gray-50 transition-colors cursor-pointer hover:bg-blue-50/30"
+                >
                   <td className="px-4 py-2">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white ${avatarColor(emp.id)}`}>
-                      {getInitials(emp.name)}
+                      {getInitials(emp.fullName)}
                     </div>
                   </td>
-                  {/* Name */}
                   <td className="px-4 py-2">
-                    <div className="font-semibold text-gray-900">{emp.name}</div>
-                    <div className="text-[10px] text-gray-400 font-mono">{emp.code}</div>
+                    <div className="font-semibold text-gray-900">{emp.fullName}</div>
+                    <div className="text-[10px] text-gray-400 font-mono">{emp.code ?? '—'}</div>
                   </td>
-                  {/* Position */}
                   <td className="px-4 py-2 text-gray-600">{emp.position || '—'}</td>
-                  {/* Phone — inline edit */}
-                  <td className="px-4 py-2 text-gray-700">
-                    <InlineInput value={emp.phone} onSave={v => updateField(emp.id, 'phone', v)} type="tel" />
-                  </td>
-                  {/* Email — inline edit */}
-                  <td className="px-4 py-2 text-gray-600 max-w-[200px]">
-                    <InlineInput value={emp.email} onSave={v => updateField(emp.id, 'email', v)} type="email" />
-                  </td>
-                  {/* Status — inline edit */}
+                  <td className="px-4 py-2 text-gray-700">{emp.phone || '—'}</td>
+                  <td className="px-4 py-2 text-gray-600 max-w-[200px] truncate">{emp.email || '—'}</td>
                   <td className="px-4 py-2 text-center">
-                    <InlineStatus value={emp.status} onSave={v => updateField(emp.id, 'status', v)} />
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${STATUS_MAP[emp.status]?.cls ?? ''}`}>
+                      {STATUS_MAP[emp.status]?.label ?? emp.status}
+                    </span>
                   </td>
-                  {/* DOB */}
-                  <td className="px-4 py-2 text-gray-500">{fmtDate(emp.dob)}</td>
-                  {/* Join date */}
-                  <td className="px-4 py-2 text-gray-500">{fmtDate(emp.joinDate)}</td>
-                  {/* Actions */}
-                  <td className="px-4 py-2 text-center">
-                    <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => setSelectedId(emp.id)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Xem chi tiết">
-                        <Eye size={13} />
-                      </button>
-                      <button onClick={() => openEditForm(emp)} className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Sửa">
-                        <Pencil size={13} />
-                      </button>
-                      <button onClick={() => setDeleteId(emp.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Xoá">
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </td>
+                  <td className="px-4 py-2 text-gray-500">{fmtDate(toDateStr(emp.dob))}</td>
+                  <td className="px-4 py-2 text-gray-500">{fmtDate(toDateStr(emp.startDate))}</td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">Không tìm thấy nhân viên nào</td></tr>
+              {!isLoading && filtered.length === 0 && (
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Không tìm thấy nhân viên nào</td></tr>
               )}
             </tbody>
           </table>
@@ -333,39 +281,36 @@ export default function NhanVienPage() {
         </div>
       </div>
 
-      {/* ═══ Detail Modal ═══ */}
+      {/* ═══ Detail Modal (view-only) ═══ */}
       {detail && (
         <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={() => setSelectedId(null)}>
           <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-[560px] max-h-[80vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
               <div className={`w-14 h-14 rounded-full flex items-center justify-center text-lg font-bold text-white shrink-0 ${avatarColor(detail.id)}`}>
-                {getInitials(detail.name)}
+                {getInitials(detail.fullName)}
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-bold text-gray-900">{detail.name}</h3>
-                <p className="text-[11px] text-gray-400">{detail.code} · {detail.department} · {detail.position || '—'}</p>
+                <h3 className="text-sm font-bold text-gray-900">{detail.fullName}</h3>
+                <p className="text-[11px] text-gray-400">{detail.code ?? '—'} · {detail.department} · {detail.position || '—'}</p>
               </div>
-              <button onClick={() => openEditForm(detail)} className="px-3 py-1.5 text-xs text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 font-medium">
-                Sửa
-              </button>
               <button onClick={() => setSelectedId(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
             </div>
             <div className="p-6 grid grid-cols-2 gap-x-6 gap-y-3 text-xs">
               {([
                 ['Email', detail.email],
-                ['Điện thoại', detail.phone],
+                ['Điện thoại', detail.phone || '—'],
                 ['Chức vụ', detail.position || '—'],
                 ['Phòng ban', detail.department],
-                ['Ngày sinh', fmtDate(detail.dob)],
+                ['Ngày sinh', fmtDate(toDateStr(detail.dob))],
                 ['Giới tính', detail.gender === 'male' ? 'Nam' : 'Nữ'],
                 ['Trạng thái', STATUS_MAP[detail.status]?.label || '—'],
-                ['Ngày vào làm', fmtDate(detail.joinDate)],
-                ['Loại HĐ', detail.contractType === 'fulltime' ? 'Toàn thời gian' : detail.contractType === 'parttime' ? 'Bán thời gian' : detail.contractType === 'intern' ? 'Thực tập' : 'Freelance'],
-                ['Lương cơ bản', detail.salary ? fmtVND(detail.salary) + ' đ' : '—'],
-                ['Ngân hàng', detail.bankName],
-                ['Số TK', detail.bankAccount],
-                ['Mã số thuế', detail.taxCode],
-                ['BHXH', detail.socialInsurance],
+                ['Ngày vào làm', fmtDate(toDateStr(detail.startDate))],
+                ['Loại HĐ', CONTRACT_MAP[detail.contractType] ?? detail.contractType],
+                ['Lương cơ bản', detail.baseSalary ? fmtVND(Number(detail.baseSalary)) + ' đ' : '—'],
+                ['Ngân hàng', detail.bankName || '—'],
+                ['Số TK', detail.bankAccount || '—'],
+                ['Mã số thuế', detail.taxCode || '—'],
+                ['BHXH', detail.bhxhCode || '—'],
               ] as [string, string][]).map(([label, value]) => (
                 <div key={label}>
                   <div className="text-gray-400 font-medium mb-0.5">{label}</div>
@@ -374,199 +319,8 @@ export default function NhanVienPage() {
               ))}
               <div className="col-span-2">
                 <div className="text-gray-400 font-medium mb-0.5">Địa chỉ</div>
-                <div className="text-gray-900 font-medium">{detail.address}</div>
+                <div className="text-gray-900 font-medium">{detail.address || '—'}</div>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ Add/Edit Form Modal ═══ */}
-      {formOpen && (
-        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={() => setFormOpen(false)}>
-          <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-[620px] max-h-[85vh] overflow-y-auto">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-gray-900">{editingId ? 'Sửa nhân viên' : 'Thêm nhân viên mới'}</h3>
-              <button onClick={() => setFormOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
-            </div>
-            <div className="p-6">
-              <div className="grid grid-cols-2 gap-x-5 gap-y-4">
-                {/* Họ tên */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-600 mb-1">Họ tên <span className="text-red-500">*</span></label>
-                  <input value={formData.name || ''} onChange={e => handleFormChange('name', e.target.value)}
-                    className={`w-full px-3 py-2 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 ${formErrors.name ? 'border-red-400' : 'border-gray-200'}`}
-                    placeholder="Nguyễn Văn A" />
-                  {formErrors.name && <span className="text-[10px] text-red-500 mt-0.5">{formErrors.name}</span>}
-                </div>
-                {/* Email */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-600 mb-1">Email <span className="text-red-500">*</span></label>
-                  <input type="email" value={formData.email || ''} onChange={e => handleFormChange('email', e.target.value)}
-                    className={`w-full px-3 py-2 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 ${formErrors.email ? 'border-red-400' : 'border-gray-200'}`}
-                    placeholder="email@example.com" />
-                  {formErrors.email && <span className="text-[10px] text-red-500 mt-0.5">{formErrors.email}</span>}
-                </div>
-                {/* SĐT */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-600 mb-1">Số điện thoại</label>
-                  <input type="tel" value={formData.phone || ''} onChange={e => handleFormChange('phone', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                    placeholder="0901234567" />
-                </div>
-                {/* Ngày sinh */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-600 mb-1">Ngày sinh</label>
-                  <input type="date" value={formData.dob || ''} onChange={e => handleFormChange('dob', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
-                </div>
-                {/* Giới tính */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-600 mb-1">Giới tính</label>
-                  <select value={formData.gender || 'male'} onChange={e => handleFormChange('gender', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white">
-                    <option value="male">Nam</option>
-                    <option value="female">Nữ</option>
-                  </select>
-                </div>
-                {/* Phòng ban */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-600 mb-1">Phòng ban</label>
-                  <select value={formData.departmentId || 'D001'}
-                    onChange={e => {
-                      const dept = DEPARTMENTS.find(d => d.id === e.target.value)
-                      if (dept) handleFormChange('departmentId', dept.id)
-                      if (dept) {
-                        setFormData(prev => ({ ...prev, departmentId: dept.id, department: dept.name, deptColor: dept.color }))
-                      }
-                    }}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white">
-                    {DEPARTMENTS.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
-                </div>
-                {/* Chức vụ */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-600 mb-1">Chức vụ</label>
-                  <input value={formData.position || ''} onChange={e => handleFormChange('position', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                    placeholder="Nhân viên, Trưởng phòng..." />
-                </div>
-                {/* Loại HĐ */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-600 mb-1">Loại hợp đồng</label>
-                  <select value={formData.contractType || 'fulltime'} onChange={e => handleFormChange('contractType', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white">
-                    <option value="fulltime">Toàn thời gian</option>
-                    <option value="parttime">Bán thời gian</option>
-                    <option value="intern">Thực tập</option>
-                    <option value="freelance">Freelance</option>
-                  </select>
-                </div>
-                {/* Ngày vào */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-600 mb-1">Ngày vào làm</label>
-                  <input type="date" value={formData.joinDate || ''} onChange={e => handleFormChange('joinDate', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
-                </div>
-                {/* Lương */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-600 mb-1">Lương cơ bản (VNĐ)</label>
-                  <input type="number" value={formData.salary || ''} onChange={e => handleFormChange('salary', Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                    placeholder="8000000" />
-                </div>
-                {/* Địa chỉ — full width */}
-                <div className="col-span-2">
-                  <label className="block text-[11px] font-semibold text-gray-600 mb-1">Địa chỉ</label>
-                  <input value={formData.address || ''} onChange={e => handleFormChange('address', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                    placeholder="123 Nguyễn Du, Q.1, TP.HCM" />
-                </div>
-
-                {/* ── Account Section ── */}
-                <div className="col-span-2 mt-2 pt-4 border-t border-gray-200">
-                  <div className="flex items-center gap-2 mb-3">
-                    <KeyRound size={14} className="text-blue-600" />
-                    <span className="text-xs font-bold text-gray-900">Thông tin đăng nhập</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-5 gap-y-4">
-                    {/* Account Email */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-gray-600 mb-1">Email đăng nhập (Gmail)</label>
-                      <input type="email" value={formData.accountEmail || ''} onChange={e => handleFormChange('accountEmail', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                        placeholder="nhanvien@gmail.com" />
-                    </div>
-                    {/* Account Password */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-gray-600 mb-1">Mật khẩu</label>
-                      <div className="flex gap-2">
-                        <input type="text" value={formData.accountPassword || ''} onChange={e => handleFormChange('accountPassword', e.target.value)}
-                          className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 font-mono"
-                          placeholder="Mật khẩu" />
-                        <button type="button" onClick={() => handleFormChange('accountPassword', genPassword())}
-                          className="px-2.5 py-2 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 hover:text-blue-600 transition-colors" title="Tạo mật khẩu ngẫu nhiên">
-                          <Shuffle size={13} />
-                        </button>
-                      </div>
-                    </div>
-                    {/* Account Role */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-gray-600 mb-1">Vai trò</label>
-                      <select value={formData.accountRole || 'employee'} onChange={e => handleFormChange('accountRole', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white">
-                        {PERMISSION_GROUPS.map(g => <option key={g.name} value={g.name}>{g.label}</option>)}
-                      </select>
-                    </div>
-                    {/* Account Status */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-gray-600 mb-1">Trạng thái tài khoản</label>
-                      <select value={formData.accountStatus || 'no_account'} onChange={e => handleFormChange('accountStatus', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white">
-                        <option value="active">Hoạt động</option>
-                        <option value="locked">Khoá</option>
-                        <option value="no_account">Chưa có tài khoản</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center justify-end gap-2 mt-6 pt-4 border-t border-gray-100">
-                <button onClick={() => setFormOpen(false)} className="px-4 py-2 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">
-                  Huỷ
-                </button>
-                <button onClick={handleSubmit} className="px-5 py-2 text-xs text-white bg-blue-600 rounded-lg hover:bg-blue-700 font-semibold flex items-center gap-1.5">
-                  <Check size={13} />
-                  {editingId ? 'Lưu thay đổi' : 'Thêm nhân viên'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ Delete Confirm Dialog ═══ */}
-      {deleteId && (
-        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={() => setDeleteId(null)}>
-          <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-[380px]">
-            <div className="p-6 text-center">
-              <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-3">
-                <Trash2 size={20} className="text-red-500" />
-              </div>
-              <h3 className="text-sm font-bold text-gray-900 mb-1">Xác nhận xoá nhân viên</h3>
-              <p className="text-xs text-gray-500">
-                Bạn có chắc muốn xoá <strong>{employees.find(e => e.id === deleteId)?.name}</strong>? Hành động này không thể hoàn tác.
-              </p>
-            </div>
-            <div className="flex border-t border-gray-100">
-              <button onClick={() => setDeleteId(null)} className="flex-1 py-3 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors rounded-bl-2xl">
-                Huỷ
-              </button>
-              <button onClick={handleDelete} className="flex-1 py-3 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors border-l border-gray-100 rounded-br-2xl">
-                Xoá nhân viên
-              </button>
             </div>
           </div>
         </div>

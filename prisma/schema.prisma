@@ -1,0 +1,603 @@
+// ──────────────────────────────────────────────────────────────
+// nhansu.hl17 — Full Prisma Schema
+// Prisma 7 · PostgreSQL · Auth.js v5 PgAdapter compatible
+// ──────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ──────────────────────────────────────────────────────────────
+// ENUMS
+// ──────────────────────────────────────────────────────────────
+
+enum ContractType {
+  FULL_TIME
+  PART_TIME
+  INTERN
+  FREELANCE
+}
+
+enum AccountStatus {
+  ACTIVE
+  LOCKED
+  NO_ACCOUNT
+}
+
+enum PayrollStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  LOCKED   // Phase 07: immutable — accounting locked for disbursement
+  PAID
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum DeductionType {
+  NGHI_NGAY
+  DI_MUON
+  VE_SOM
+  OVERTIME
+}
+
+enum InsuranceType {
+  BHXH
+  BHYT
+  BHTN
+}
+
+enum CalcMode {
+  none
+  add_to_net
+  subtract_from_net
+}
+
+enum RevenueCategory {
+  PRODUCT
+  SERVICE
+  CONSULTING
+  INVESTMENT
+  OTHER
+}
+
+enum ExpenseCategory {
+  SALARY
+  RENT
+  UTILITIES
+  MARKETING
+  EQUIPMENT
+  TRAVEL
+  INSURANCE
+  TAX
+  OTHER
+}
+
+enum DebtType {
+  RECEIVABLE
+  PAYABLE
+}
+
+enum LeaveType {
+  ANNUAL
+  SICK
+  PERSONAL
+  MATERNITY
+  UNPAID
+  WEDDING
+  BEREAVEMENT
+}
+
+enum EmployeeStatus {
+  WORKING
+  HALF
+  LEAVE
+  REMOTE
+  RESIGNED
+}
+
+// ──────────────────────────────────────────────────────────────
+// AUTH.JS v5 — Required tables (PgAdapter compatible)
+// ──────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          String    @default("employee")
+  permissions   String[]  @default([])
+  employeeId    String?   @unique
+  companyId     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+  employee Employee? @relation(fields: [employeeId], references: [id])
+
+  @@index([companyId])
+  @@map("users")
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ──────────────────────────────────────────────────────────────
+// COMPANY
+// ──────────────────────────────────────────────────────────────
+
+model Company {
+  id          String    @id @default(cuid())
+  name        String
+  taxId       String    @unique
+  address     String?
+  phone       String?
+  email       String?
+  website     String?
+  director    String?
+  bankAccount String?
+  bankName    String?
+  logo        String?
+  foundedDate DateTime? @db.Date
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  settings CompanySettings?
+
+  @@map("companies")
+}
+
+model CompanySettings {
+  id                 String   @id @default(cuid())
+  companyId          String   @unique
+  workHoursPerDay    Int      @default(8)
+  workDaysPerWeek    Int      @default(5)
+  overtimeRate       Decimal  @db.Decimal(4, 2) @default(1.5)
+  holidayRate        Decimal  @db.Decimal(4, 2) @default(2.0)
+  leavePerYear       Int      @default(12)
+  currency           String   @default("VND")
+  locale             String   @default("vi-VN")
+  enableInsuranceTax Boolean  @default(true)
+  updatedAt          DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("company_settings")
+}
+
+// ──────────────────────────────────────────────────────────────
+// EMPLOYEE
+// ──────────────────────────────────────────────────────────────
+
+model Employee {
+  id                   String         @id @default(cuid())
+  companyId            String
+  code                 String?
+  fullName             String
+  email                String
+  phone                String?
+  dob                  DateTime?      @db.Date
+  gender               String?
+  idCard               String?
+  address              String?
+  department           String
+  position             String
+  status               EmployeeStatus @default(WORKING)
+  contractType         ContractType
+  startDate            DateTime       @db.Date
+  endDate              DateTime?      @db.Date
+  baseSalary           Decimal        @db.Decimal(15, 0)
+  responsibilitySalary Decimal        @db.Decimal(15, 0) @default(0)
+  bankAccount          String?
+  bankName             String?
+  taxCode              String?
+  bhxhCode             String?
+  accountStatus        AccountStatus  @default(ACTIVE)
+  deletedAt            DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  user            User?
+  workUnits       WorkUnit[]
+  deductions      DeductionEvent[]
+  payrolls        Payroll[]
+  leaveRequests   LeaveRequest[]
+  salaryValues    SalaryValue[]
+  kpiViolations   KpiViolation[]
+  overtimeEntries OvertimeEntry[]
+
+  @@unique([companyId, email])
+  @@index([companyId, deletedAt])
+  @@index([department])
+  @@map("employees")
+}
+
+// ──────────────────────────────────────────────────────────────
+// ATTENDANCE
+// ──────────────────────────────────────────────────────────────
+
+model WorkUnit {
+  id         String   @id @default(cuid())
+  companyId  String
+  employeeId String
+  date       DateTime @db.Date
+  units      Decimal  @db.Decimal(4, 2) @default(1.0)
+  note       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, date])
+  @@index([companyId, date])
+  @@map("work_units")
+}
+
+model LeaveRequest {
+  id          String         @id @default(cuid())
+  companyId   String
+  employeeId  String
+  type        LeaveType
+  startDate   DateTime       @db.Date
+  endDate     DateTime       @db.Date
+  totalDays   Int
+  reason      String?
+  status      ApprovalStatus @default(PENDING)
+  approvedBy  String?
+  approvedAt  DateTime?
+  submittedAt DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  employee        Employee         @relation(fields: [employeeId], references: [id])
+  deductionEvents DeductionEvent[]
+
+  @@index([companyId, employeeId])
+  @@index([status])
+  @@map("leave_requests")
+}
+
+model DeductionEvent {
+  id             String         @id @default(cuid())
+  companyId      String
+  employeeId     String
+  leaveRequestId String?
+  date           DateTime       @db.Date
+  type           DeductionType
+  delta          Decimal        @db.Decimal(4, 2)
+  reason         String
+  status         ApprovalStatus @default(PENDING)
+  submittedAt    DateTime       @default(now())
+  approvedBy     String?
+  approvedAt     DateTime?
+
+  employee     Employee      @relation(fields: [employeeId], references: [id])
+  leaveRequest LeaveRequest? @relation(fields: [leaveRequestId], references: [id])
+
+  @@index([companyId, employeeId, date])
+  @@index([leaveRequestId])
+  @@index([status])
+  @@map("deduction_events")
+}
+
+model OvertimeEntry {
+  id         String   @id @default(cuid())
+  companyId  String
+  employeeId String
+  date       DateTime @db.Date
+  hours      Decimal  @db.Decimal(4, 2)
+  note       String?
+  createdAt  DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([companyId, employeeId, date])
+  @@map("overtime_entries")
+}
+
+model KpiViolation {
+  id         String   @id @default(cuid())
+  companyId  String
+  employeeId String
+  date       DateTime @db.Date
+  types      String[]
+  note       String?
+  createdAt  DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([companyId, employeeId, date])
+  @@map("kpi_violations")
+}
+
+// ──────────────────────────────────────────────────────────────
+// PAYROLL
+// ──────────────────────────────────────────────────────────────
+
+model Payroll {
+  id              String        @id @default(cuid())
+  companyId       String
+  employeeId      String
+  month           DateTime      @db.Date
+  congSoNhan      Decimal       @db.Decimal(6, 2) @default(0)
+  congSoTru       Decimal       @db.Decimal(6, 2) @default(0)
+  netWorkUnits    Decimal       @db.Decimal(6, 2) @default(0)
+  baseSalary           Decimal  @db.Decimal(15, 0)
+  workSalary           Decimal  @db.Decimal(15, 0) @default(0)
+  responsibilitySalary Decimal  @db.Decimal(15, 0) @default(0)
+  overtimeHours        Decimal  @db.Decimal(7, 2)  @default(0)
+  kpiBonus             Decimal  @db.Decimal(15, 0) @default(0)
+  overtimePay          Decimal  @db.Decimal(15, 0) @default(0)
+  mealPay              Decimal  @db.Decimal(15, 0) @default(0)
+  tienPhuCap           Decimal  @db.Decimal(15, 0) @default(0)
+  kpiChuyenCan         Decimal  @db.Decimal(15, 0) @default(0)
+  kpiTrachNhiem        Decimal  @db.Decimal(15, 0) @default(0)
+  tienPhat             Decimal  @db.Decimal(15, 0) @default(0)
+  bonus                Decimal  @db.Decimal(15, 0) @default(0)
+  grossSalary          Decimal  @db.Decimal(15, 0)
+  bhxhEmployee    Decimal       @db.Decimal(15, 0) @default(0)
+  bhytEmployee    Decimal       @db.Decimal(15, 0) @default(0)
+  bhtnEmployee    Decimal       @db.Decimal(15, 0) @default(0)
+  pitTax          Decimal       @db.Decimal(15, 0) @default(0)
+  otherDeductions Decimal       @db.Decimal(15, 0) @default(0)
+  netSalary       Decimal       @db.Decimal(15, 0)
+  status          PayrollStatus @default(DRAFT)
+  needsRecalc     Boolean       @default(false)   // Phase 03b: true = inputs changed since last calc
+  snapshot        Json?                           // Phase 07b: full calculation snapshot at LOCK time (immutable)
+  anomalies       Json?                           // Phase 09: Array<{rule,severity,message}> — detection results
+  approvedBy      String?
+  approvedAt      DateTime?
+  paidAt          DateTime?
+  note            String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, month])
+  @@index([companyId, month])
+  @@index([status])
+  @@map("payrolls")
+}
+
+model SalaryColumn {
+  id         String   @id @default(cuid())
+  companyId  String
+  name       String
+  key        String
+  type       String   @default("number")
+  formula    String?
+  isEditable Boolean  @default(true)
+  isSystem   Boolean  @default(false)
+  calcMode   CalcMode @default(none)
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@unique([companyId, key])
+  @@map("salary_columns")
+}
+
+model SalaryColumnVersion {
+  id            String   @id @default(cuid())
+  companyId     String
+  columnKey     String
+  name          String
+  formula       String?
+  type          String
+  effectiveFrom DateTime @db.Date
+  createdAt     DateTime @default(now())
+  createdBy     String?
+
+  @@unique([companyId, columnKey, effectiveFrom])
+  @@index([companyId, columnKey, effectiveFrom])
+  @@map("salary_column_versions")
+}
+
+model SalaryValue {
+  id         String   @id @default(cuid())
+  companyId  String
+  employeeId String
+  month      DateTime @db.Date
+  columnKey  String
+  value      Decimal  @db.Decimal(15, 2)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, month, columnKey])
+  @@index([companyId, month])
+  @@map("salary_values")
+}
+
+// ──────────────────────────────────────────────────────────────
+// FINANCE
+// ──────────────────────────────────────────────────────────────
+
+model RevenueRecord {
+  id            String          @id @default(cuid())
+  companyId     String
+  date          DateTime        @db.Date
+  customer      String
+  description   String?
+  category      RevenueCategory
+  amount        Decimal         @db.Decimal(15, 0)
+  invoiceNo     String?
+  paymentMethod String?
+  status        String          @default("confirmed")
+  note          String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([companyId, date])
+  @@map("revenue_records")
+}
+
+model ExpenseRecord {
+  id          String          @id @default(cuid())
+  companyId   String
+  date        DateTime        @db.Date
+  vendor      String?
+  description String
+  category    ExpenseCategory
+  department  String?
+  amount      Decimal         @db.Decimal(15, 0)
+  status      ApprovalStatus  @default(PENDING)
+  approvedBy  String?
+  receiptNo   String?
+  note        String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([companyId, date])
+  @@map("expense_records")
+}
+
+model BudgetRecord {
+  id         String   @id @default(cuid())
+  companyId  String
+  period     DateTime @db.Date
+  category   String
+  department String?
+  planned    Decimal  @db.Decimal(15, 0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([companyId, period, category, department])
+  @@map("budget_records")
+}
+
+model DebtRecord {
+  id            String   @id @default(cuid())
+  companyId     String
+  type          DebtType
+  company       String
+  contactPerson String?
+  phone         String?
+  amount        Decimal  @db.Decimal(15, 0)
+  paid          Decimal  @db.Decimal(15, 0) @default(0)
+  invoiceNo     String?
+  issueDate     DateTime @db.Date
+  dueDate       DateTime @db.Date
+  status        String   @default("current")
+  isPaidOff     Boolean  @default(false)
+  note          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([companyId, dueDate])
+  @@map("debt_records")
+}
+
+// ──────────────────────────────────────────────────────────────
+// CONFIG — PITBracket, InsuranceRate, PermissionGroup
+// ──────────────────────────────────────────────────────────────
+
+model PITBracket {
+  id        String    @id @default(cuid())
+  companyId String
+  minIncome Decimal   @db.Decimal(15, 0)
+  maxIncome Decimal?  @db.Decimal(15, 0)
+  rate      Decimal   @db.Decimal(5, 4)
+  validFrom DateTime  @db.Date
+  validTo   DateTime? @db.Date
+
+  @@index([companyId, validFrom])
+  @@map("pit_brackets")
+}
+
+model InsuranceRate {
+  id           String        @id @default(cuid())
+  companyId    String
+  type         InsuranceType
+  employeeRate Decimal       @db.Decimal(5, 4)
+  employerRate Decimal       @db.Decimal(5, 4)
+  validFrom    DateTime      @db.Date
+  validTo      DateTime?     @db.Date
+
+  @@index([companyId, type, validFrom])
+  @@map("insurance_rates")
+}
+
+model PermissionGroup {
+  id          String   @id @default(cuid())
+  companyId   String
+  name        String
+  label       String
+  permissions String[]
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([companyId, name])
+  @@map("permission_groups")
+}
+
+// ──────────────────────────────────────────────────────────────
+// AUDIT
+// ──────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  companyId  String
+  entityType String
+  entityId   String
+  action     String
+  changedBy  String?
+  changes    Json?
+  oldData    Json?    // Phase 07: full snapshot before change
+  newData    Json?    // Phase 07: snapshot after change
+  createdAt  DateTime @default(now())
+
+  @@index([companyId, entityType, entityId])
+  @@index([changedBy, createdAt])
+  @@map("audit_logs")
+}

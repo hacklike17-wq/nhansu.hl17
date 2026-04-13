@@ -1,0 +1,155 @@
+import { NextRequest, NextResponse } from "next/server"
+import { auth } from "@/auth"
+import { db } from "@/lib/db"
+import { CreateEmployeeSchema } from "@/lib/schemas/employee"
+import bcrypt from "bcryptjs"
+
+export async function GET(req: NextRequest) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const { searchParams } = new URL(req.url)
+  const companyId = (session.user as any).companyId
+  const department = searchParams.get("department")
+  const search = searchParams.get("search")
+
+  const employees = await db.employee.findMany({
+    where: {
+      companyId,
+      deletedAt: null,
+      ...(department ? { department } : {}),
+      ...(search
+        ? {
+            OR: [
+              { fullName: { contains: search, mode: "insensitive" } },
+              { email: { contains: search, mode: "insensitive" } },
+              { code: { contains: search, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+    },
+    include: { user: { select: { id: true, email: true, role: true } } },
+    orderBy: [{ createdAt: "asc" }],
+  })
+
+  return NextResponse.json(employees)
+}
+
+export async function POST(req: NextRequest) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const companyId = (session.user as any).companyId
+
+  let body: Record<string, unknown>
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: "Request body không hợp lệ" }, { status: 400 })
+  }
+
+  const parsed = CreateEmployeeSchema.safeParse({ ...body, companyId })
+  if (!parsed.success) {
+    console.error("[POST /api/employees] Zod error:", JSON.stringify(parsed.error.flatten()))
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+  }
+
+  const data = parsed.data
+
+  try {
+    // Check duplicate employee email within company
+    const existingEmp = await db.employee.findFirst({
+      where: { companyId, email: data.email, deletedAt: null },
+    })
+    if (existingEmp) {
+      return NextResponse.json(
+        { error: "Email này đã được dùng cho nhân viên khác trong công ty" },
+        { status: 409 }
+      )
+    }
+
+    // Check duplicate user email globally (User.email is globally unique)
+    if (data.accountStatus !== "NO_ACCOUNT") {
+      const existingUser = await db.user.findFirst({ where: { email: data.email } })
+      if (existingUser) {
+        return NextResponse.json(
+          { error: "Email này đã có tài khoản đăng nhập trong hệ thống" },
+          { status: 409 }
+        )
+      }
+    }
+
+    const startDate = new Date(data.startDate)
+    const dob = data.dob ? new Date(data.dob) : null
+
+    // Atomic: create employee + user in a single transaction
+    const employee = await db.$transaction(async (tx: any) => {
+      const emp = await tx.employee.create({
+        data: {
+          companyId: data.companyId,
+          fullName: data.fullName,
+          email: data.email,
+          phone: data.phone ?? null,
+          dob,
+          gender: data.gender ?? null,
+          idCard: data.idCard ?? null,
+          address: data.address ?? null,
+          department: data.department,
+          position: data.position,
+          contractType: data.contractType,
+          startDate,
+          baseSalary: data.baseSalary,
+          responsibilitySalary: data.responsibilitySalary ?? 0,
+          bankAccount: data.bankAccount ?? null,
+          bankName: data.bankName ?? null,
+          taxCode: data.taxCode ?? null,
+          bhxhCode: data.bhxhCode ?? null,
+          code: data.code ?? null,
+          accountStatus: data.accountStatus ?? "ACTIVE",
+        },
+      })
+
+      if (data.accountStatus !== "NO_ACCOUNT") {
+        const rawPassword = data.accountPassword?.trim() || "123456"
+        const hashedPassword = await bcrypt.hash(rawPassword, 12)
+        await tx.user.create({
+          data: {
+            email: data.email,
+            name: data.fullName,
+            password: hashedPassword,
+            role: "employee",
+            employeeId: emp.id,
+            companyId,
+          },
+        })
+      }
+
+      return emp
+    })
+
+    return NextResponse.json(employee, { status: 201 })
+  } catch (error: unknown) {
+    console.error("[POST /api/employees] DB error:", error)
+
+    // Surface Prisma unique constraint violations
+    if (error && typeof error === "object" && "code" in error) {
+      const e = error as any
+      if (e.code === "P2002") {
+        const target: string[] = e.meta?.target ?? []
+        if (target.includes("email")) {
+          return NextResponse.json({ error: "Email này đã tồn tại trong hệ thống" }, { status: 409 })
+        }
+        return NextResponse.json({ error: `Dữ liệu bị trùng lặp: ${target.join(", ")}` }, { status: 409 })
+      }
+      if (e.code === "P2003") {
+        return NextResponse.json({ error: "Dữ liệu liên kết không hợp lệ (foreign key)" }, { status: 400 })
+      }
+    }
+
+    const msg = error instanceof Error ? error.message : "Lỗi không xác định"
+    return NextResponse.json(
+      { error: `Lỗi máy chủ: ${msg}` },
+      { status: 500 }
+    )
+  }
+}

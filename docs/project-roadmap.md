@@ -1,0 +1,204 @@
+# Project Roadmap
+
+**Project:** ADMIN_HL17 — nhansu.hl17
+**Last Updated:** 2026-04-13
+
+---
+
+## Completed Work
+
+### Foundation (Production Migration)
+
+The system migrated from a localStorage-based prototype to a full-stack PostgreSQL + Auth.js v5 production system:
+
+- Prisma 7 schema (single file, `@prisma/adapter-pg` for direct PostgreSQL connection)
+- Auth.js v5 with JWT sessions, Credentials provider, Edge-safe split config
+- Route Handlers for all HR modules (employees, attendance, payroll, leave)
+- SWR data fetching layer with client-side hooks
+- RBAC middleware at Edge runtime
+
+### Payroll Engine — 13 Phases (All Complete)
+
+| Phase | Description | Key Deliverables |
+|-------|-------------|-----------------|
+| Phase 01 | Formula Engine | `evalFormula()` using `expr-eval`; `buildDependencyGraph()`; `topologicalSort()` |
+| Phase 01b | Formula Safety | `FormulaError` contract; cascade detection; function never throws |
+| Phase 02 | Salary Config UI | CRUD for `SalaryColumn`; formula preview via `validateFormula()`; circular detection at save |
+| Phase 03 | Attendance Sync | Attendance mutations trigger `autoRecalcDraftPayroll()`; `needsRecalc` flag introduced |
+| Phase 03b | Recompute Strategy | `markDraftPayrollsStale()` for bulk staleness marking; guard against recalculating non-DRAFT rows |
+| Phase 04 | Attendance & Payroll CRUD | Generate missing payrolls; add employee to month; delete DRAFT payroll |
+| Phase 05 | Manual Inputs | `SalaryValue` model for `phuCap`, `thuong`, `phat` manual inputs; saved via `/api/payroll/salary-values` |
+| Phase 06 | System Standardization | Backend-authoritative payroll — all math server-side; removed client-side calc |
+| Phase 07 | Workflow & Audit | Full DRAFT→PENDING→APPROVED→LOCKED→PAID workflow; `AuditLog` on every transition; concurrency guard |
+| Phase 07b | Payroll Snapshot | Immutable `Payroll.snapshot` JSON at LOCK time; `PayrollSnapshot` type with full calc state |
+| Phase 08 | Versioning & Testing | `SalaryColumnVersion` with `effectiveFrom` date; `getColumnsForMonth()` version lookup; 24 Vitest tests |
+| Phase 09 | Anomaly Detection & Export | `checkPayrollAnomalies()` with error/warning severity; Excel export via ExcelJS at `/api/export/payroll` |
+| Phase 10 | Multi-tenant RBAC | `companyId` audit on all queries; employee self-scoping enforced server-side; permission matrix for `hr_manager`/`accountant` |
+
+### Bug Fixes (Post-Phase 10)
+
+- Employee dropdown filter in payroll generate dialog
+- Recalculate button UI refresh after recalculation
+- Feedback messages for payroll status transitions
+- Session `companyId` propagation fix
+
+---
+
+## Current State (2026-04-13)
+
+**What is fully working:**
+- Authentication (login, JWT sessions, RBAC middleware)
+- Employee management CRUD + soft delete
+- Attendance: WorkUnit, OvertimeEntry, KpiViolation, DeductionEvent
+- Payroll: full calculation engine + workflow + anomaly detection + Excel export
+- Leave requests: approval with batch DeductionEvent creation
+- Settings: PITBracket, InsuranceRate, SalaryColumn CRUD
+- Permission groups: CRUD + system group protection
+- Formula versioning with historical recalculation
+
+**What is using static data (not yet backend-connected):**
+- Dashboard KPI cards and charts (static from `constants/data.ts`)
+- Finance modules: Doanh thu, Chi phí, Dòng tiền, Ngân sách, Công nợ
+- Recruitment (Tuyển dụng)
+- Reports (Báo cáo) — export triggers exist but data is static
+
+---
+
+## Near-Term Priorities
+
+### 1. Finance Module Backend API
+
+Connect the five finance modules to PostgreSQL:
+
+- `GET/POST /api/revenue` — RevenueRecord CRUD
+- `GET/POST /api/expenses` — ExpenseRecord CRUD + approval
+- `GET /api/cashflow` — derived view (merge Revenue + Expense)
+- `GET/POST /api/budget` — BudgetRecord CRUD + actual computed on read
+- `GET/POST /api/debt` — DebtRecord CRUD
+
+Each module page (`doanhthu`, `chiphi`, `dongtien`, `ngansach`, `congno`) would then use SWR hooks to fetch from the API instead of static constants.
+
+### 2. Dashboard Backend Data
+
+Replace static KPI data with real aggregates from the database:
+- Total revenue/expense for current month (from `revenue_records`, `expense_records`)
+- Active employee count (from `employees` where `deletedAt IS NULL`)
+- Outstanding debt total (from `debt_records` where `isPaidOff = false`)
+- Cashflow chart: 6-month rolling Revenue vs Expense
+
+### 3. Recruitment (Tuyển dụng) Backend
+
+Simple CRUD for job openings and applicant pipeline — requires a `JobOpening` model in Prisma schema.
+
+### 4. Database Seed Hardening
+
+- Add production guard to `seed.ts`: `if (process.env.NODE_ENV === "production") throw new Error("...")`
+- Expand seed data beyond current `seed-salary-columns.ts`
+- Add PITBracket seed data (2025 current + 2026 reform brackets)
+- Add InsuranceRate seed data
+
+---
+
+## Medium-Term Roadmap
+
+### PIT Reform (July 2026)
+
+The personal income tax reform scheduled for July 2026 will change:
+- PIT brackets (7 brackets with new thresholds)
+- Personal deduction amount (currently hardcoded at 11,000,000 VND/month in `payroll.service.ts`)
+
+Required changes:
+1. Insert new `PITBracket` records with `validFrom: 2026-07-01` via Settings UI (no code change needed for brackets)
+2. Update `PERSONAL_DEDUCTION` constant in `payroll.service.ts` (or move to DB config)
+3. Test recalculation for July 2026 payrolls uses new brackets
+
+### DB Session Migration
+
+Current JWT sessions have a limitation: permission changes take effect only on next login. If immediate revocation is needed (e.g., for security incidents), migrate to DB sessions:
+
+1. Change `session: { strategy: "database" }` in `auth.config.ts`
+2. Remove `jwt` callback; keep `session` callback
+3. Remove `jwt` type augmentation from `next-auth.d.ts`
+4. Ensure `DATABASE_URL_DIRECT` is set for non-pooled connections (required for PgAdapter DB sessions)
+
+### SWR Optimistic Updates
+
+For better UX on payroll status transitions, implement SWR optimistic updates:
+```typescript
+// Optimistically update local data while request is in flight
+mutate(
+  currentPayrolls.map(p => p.id === id ? { ...p, status: "APPROVED" } : p),
+  false // do not revalidate yet
+)
+await updatePayrollStatus(id, "APPROVED")
+mutate()  // revalidate after confirmed
+```
+
+### Payroll PDF Payslip
+
+Individual payslip PDF generation for employees:
+- Route Handler: `GET /api/export/payslip?payrollId=<id>`
+- Requires `luong.view` permission for own payslip; `luong.export` for others
+- PDF library: consider `@react-pdf/renderer` or `puppeteer`
+
+---
+
+## Future Roadmap (v2.0)
+
+### Multi-Tenancy UI
+
+The data model is already multi-tenant ready (`companyId` on all tables). Adding UI multi-tenancy requires:
+- Company switcher in the Topbar
+- Separate `companyId` routing or subdomain routing
+- Company registration / onboarding flow
+
+### Email Notifications
+
+- Leave approval/rejection notifications to employees
+- Payroll processing notifications to HR/accountants
+- Overdue debt alerts
+- Provider: Resend or SendGrid
+
+### Mobile PWA
+
+Progressive Web App for employee self-service:
+- View own payslip (monthly)
+- Submit leave requests
+- Check attendance records
+- `manifest.json` + service worker for offline support
+
+### Real-Time Updates
+
+WebSocket or Server-Sent Events for:
+- Payroll status change notifications (HR team)
+- Leave approval/rejection notifications (employees)
+- Consider: Next.js Route Handlers + `ReadableStream` for SSE
+
+### File Uploads
+
+- Employee profile photos
+- Receipt uploads for expense records
+- Requires storage integration (Vercel Blob, Cloudflare R2, or S3)
+
+### Recruitment Pipeline (Extended)
+
+- Applicant tracking with stage management
+- Interview scheduling
+- Offer letter generation (PDF)
+- Integration with job boards
+
+---
+
+## Known Technical Debt
+
+| Item | Priority | Notes |
+|------|----------|-------|
+| Finance modules use static data | High | No backend API for doanhthu, chiphi, etc. |
+| Seed.ts missing production guard | High | Add `if (NODE_ENV === "production") throw` |
+| `as any` casts in Route Handlers | Medium | Auth.js session type augmentation not fully propagated |
+| Personal deduction hardcoded | Medium | Move 11,000,000 to DB config before July 2026 reform |
+| No rate limiting on login endpoint | Medium | Implement via hosting WAF or middleware |
+| Static dashboard data | Medium | Replace with real DB aggregates |
+| Recruitment has no backend | Low | Static data only |
+| Reports page has no real export | Low | Catalog exists; actual report generation not implemented |
+| No test coverage for Route Handlers | Low | Integration tests needed for API layer |

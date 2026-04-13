@@ -1,19 +1,25 @@
 'use client'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { useAuth } from '@/components/auth/AuthProvider'
+import { Suspense, useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { signIn } from 'next-auth/react'
 import { Lock, Mail, Eye, EyeOff, AlertCircle } from 'lucide-react'
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
-  const { login } = useAuth()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // next-auth v5 redirect về /login?error=CredentialsSignin khi sai mật khẩu
+  useEffect(() => {
+    const err = searchParams.get('error')
+    if (err) setError('Email hoặc mật khẩu không đúng')
+  }, [searchParams])
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     if (!email.trim() || !password.trim()) {
@@ -21,26 +27,35 @@ export default function LoginPage() {
       return
     }
     setLoading(true)
-    setTimeout(() => {
-      const result = login(email.trim(), password)
-      if (result.ok) {
-        router.push('/')
+    try {
+      const res = await signIn('credentials', {
+        email: email.trim(),
+        password,
+        redirect: false,
+        callbackUrl: '/',
+      })
+      if (!res || res.error) {
+        setError('Email hoặc mật khẩu không đúng')
+        setLoading(false)
       } else {
-        setError(result.error || 'Đăng nhập thất bại')
+        router.push(res.url ?? '/')
+        router.refresh()
       }
+    } catch {
+      setError('Email hoặc mật khẩu không đúng')
       setLoading(false)
-    }, 600)
+    }
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23000000\' fill-opacity=\'1\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")' }} />
+      <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23000000\' fill-opacity=\'1\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E")' }} />
       <div className="relative w-full max-w-[400px]">
         <div className="text-center mb-8">
           <div className="w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-600/25">
             <span className="text-white text-lg font-black tracking-tighter leading-none">HL<br/>17</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">ADMIN_HL17</h1>
+          <h1 className="text-2xl font-bold text-gray-900">nhansu.hl17</h1>
           <p className="text-sm text-gray-500 mt-1">Hệ thống quản trị doanh nghiệp</p>
         </div>
 
@@ -100,8 +115,16 @@ export default function LoginPage() {
           </form>
         </div>
 
-        <p className="text-center text-[11px] text-gray-400 mt-6">ADMIN_HL17 v1.0 — Quản trị doanh nghiệp</p>
+        <p className="text-center text-[11px] text-gray-400 mt-6">nhansu.hl17 v1.0 — Quản trị doanh nghiệp</p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   )
 }

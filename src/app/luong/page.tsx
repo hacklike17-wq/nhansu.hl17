@@ -1,155 +1,645 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import PageShell from '@/components/layout/PageShell'
-import { SALARY_DATA } from '@/constants/data'
 import { useAuth } from '@/components/auth/AuthProvider'
+import { usePayroll, generatePayroll, updatePayrollStatus, generateMissingPayroll, deletePayroll } from '@/hooks/usePayroll'
+import { useEmployees } from '@/hooks/useEmployees'
+import { useSalaryColumns } from '@/hooks/useSalaryColumns'
+import { useCompanySettings } from '@/hooks/useCompanySettings'
 import { fmtVND } from '@/lib/format'
-import { Search, Download, Eye, EyeOff } from 'lucide-react'
-
-const STATUS_MAP: Record<string, { label: string; cls: string }> = {
-  draft:    { label: 'Nháp',      cls: 'bg-gray-100 text-gray-600 border-gray-200' },
-  pending:  { label: 'Chờ duyệt', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-  approved: { label: 'Đã duyệt',  cls: 'bg-blue-50 text-blue-700 border-blue-200' },
-  paid:     { label: 'Đã trả',    cls: 'bg-green-50 text-green-700 border-green-200' },
-}
-
-const COLUMNS = [
-  { key: 'baseSalary', label: 'Lương cứng' },
-  { key: 'kpiAttendance', label: 'KPI Chuyên cần' },
-  { key: 'kpiPerformance', label: 'KPI Hiệu suất' },
-  { key: 'overtimePay', label: 'Lương OT' },
-  { key: 'bonus', label: 'Thưởng' },
-  { key: 'deductions', label: 'Khấu trừ (BH)' },
-  { key: 'tax', label: 'Thuế TNCN' },
-  { key: 'totalGross', label: 'Tổng gross' },
-  { key: 'totalNet', label: 'Thực nhận' },
-] as const
+import { X, RefreshCw, CheckCircle, Clock, Banknote, Plus, Trash2, Download, AlertTriangle } from 'lucide-react'
+import { STATUS_MAP, COL_STYLE, MANUAL_INPUT_MAP } from './_lib/constants'
+import { buildRowVars, renderCell } from './_lib/row-helpers'
 
 export default function LuongPage() {
-  const { user } = useAuth()
-  const isEmployee = user?.role === 'employee'
+  const { user, hasPermission } = useAuth()
+  const isManager = user?.role !== 'employee'
+  const canEdit   = isManager && hasPermission('luong.edit')
 
-  const [search, setSearch] = useState('')
-  const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(COLUMNS.map(c => c.key)))
-  const [showColPicker, setShowColPicker] = useState(false)
+  const defaultMonth = new Date().toISOString().slice(0, 7)
+  const [month, setMonth] = useState(defaultMonth)
+  const [generating, setGenerating] = useState(false)
+  const [generatingMissing, setGeneratingMissing] = useState(false)
+  const [recalculating, setRecalculating] = useState(false)
+  const [recalcMsg, setRecalcMsg] = useState<string | null>(null)
+  const [addEmpOpen, setAddEmpOpen] = useState(false)
+  const [addEmpSearch, setAddEmpSearch] = useState('')
+  const addEmpRef = useRef<HTMLDivElement>(null)
 
-  const toggleCol = (key: string) => {
-    setVisibleCols(prev => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
+  const { payrolls, isLoading, mutate } = usePayroll({
+    month,
+    employeeId: isManager ? undefined : user?.employeeId ?? undefined,
+  })
+  const { employees: allEmployees, isLoading: empLoading } = useEmployees()
+
+  /* ── Salary columns — SWR so always fresh (auto-updates after config changes) ── */
+  const { salaryColumns: allCols } = useSalaryColumns()
+  // Show all columns that either map to a payroll field OR have a salaryValue / formula
+  // (no hardcoded filter — renders 100% from DB config)
+  const salaryColumns = allCols
+
+  /* ── BH/PIT visibility: driven by master toggle from DB (SWR, revalidates on focus) ── */
+  const { enableInsuranceTax } = useCompanySettings()
+  // Master toggle controls both columns — individual localStorage toggles are ignored
+  // to avoid stale config causing columns to hide when the master is ON
+  const showBhCols = enableInsuranceTax
+  const showPitCol = enableInsuranceTax
+
+  // Totals
+  const totalNet   = payrolls.reduce((s: number, p: any) => s + Number(p.netSalary), 0)
+  const totalGross = payrolls.reduce((s: number, p: any) => s + Number(p.grossSalary), 0)
+
+  /* ─── Tính lại tất cả ─── */
+  async function handleGenerate() {
+    setGenerating(true)
+    setRecalcMsg(null)
+    try {
+      const data = await generatePayroll(month)
+      setRecalcMsg(`Đã tính lại ${data.succeeded ?? 0} bản lương`)
+      await mutate()
+    } catch (e: any) {
+      console.error('generatePayroll error:', e)
+      setRecalcMsg(`Lỗi: ${e.message ?? 'Không thể tính lương'}`)
+    } finally {
+      setGenerating(false)
+      setTimeout(() => setRecalcMsg(null), 3000)
+    }
   }
 
-  const filtered = SALARY_DATA.filter(r => {
-    if (isEmployee && r.employeeId !== user?.employeeId) return false
-    if (search && !r.employeeName.toLowerCase().includes(search.toLowerCase())) return false
-    return true
-  })
+  /* ─── Phase 03: Cập nhật lương ─── */
+  async function handleRecalculate() {
+    setRecalculating(true)
+    setRecalcMsg(null)
+    try {
+      const res = await fetch('/api/payroll/recalculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setRecalcMsg(`Lỗi: ${data.error ?? res.statusText}`)
+      } else {
+        setRecalcMsg(`Đã cập nhật ${data.updated} bản lương`)
+      }
+      await mutate()  // always refetch regardless of outcome
+    } catch (e: any) {
+      console.error('recalculate error:', e)
+      setRecalcMsg(`Lỗi kết nối`)
+    } finally {
+      setRecalculating(false)
+      setTimeout(() => setRecalcMsg(null), 3000)
+    }
+  }
 
-  const totalNet = filtered.reduce((s, r) => s + r.totalNet, 0)
-  const totalGross = filtered.reduce((s, r) => s + r.totalGross, 0)
+  /* ─── Phase 04: Generate for missing employees ─── */
+  async function handleGenerateMissing() {
+    setGeneratingMissing(true)
+    setRecalcMsg(null)
+    try {
+      const data = await generateMissingPayroll(month)
+      if (data.ok) {
+        setRecalcMsg(data.succeeded > 0 ? `Đã tạo ${data.succeeded} bản lương mới` : 'Tất cả nhân viên đã có bảng lương')
+        await mutate()
+      }
+    } catch (e) {
+      console.error('generateMissing error:', e)
+    } finally {
+      setGeneratingMissing(false)
+      setTimeout(() => setRecalcMsg(null), 3000)
+    }
+  }
+
+  /* ─── Phase 04: Add single employee ─── */
+  async function handleAddEmployee(employeeId: string) {
+    setAddEmpOpen(false)
+    setAddEmpSearch('')
+    try {
+      await generatePayroll(month, [employeeId])
+      await mutate()
+    } catch (e) {
+      console.error('addEmployee error:', e)
+    }
+  }
+
+  /* ─── Phase 04: Delete DRAFT payroll ─── */
+  async function handleDeletePayroll(id: string) {
+    try {
+      await deletePayroll(id)
+      await mutate()
+    } catch (e: any) {
+      alert(e.message)
+    }
+  }
+
+  /* ─── Phase 05: Inline manual-input editing ─── */
+  type CellEdit = { payrollId: string; colKey: string; raw: number }
+  const [cellEdit, setCellEdit] = useState<CellEdit | null>(null)
+  const [cellVal, setCellVal] = useState('')
+  const [cellSaving, setCellSaving] = useState(false)
+  const [cellError, setCellError] = useState<string | null>(null)
+
+  async function saveCellEdit() {
+    if (!cellEdit) return
+    // Use MANUAL_INPUT_MAP for legacy key aliases; fall back to col.key for custom columns
+    const saveKey = MANUAL_INPUT_MAP[cellEdit.colKey] ?? cellEdit.colKey
+    if (!saveKey) return
+    const num = parseInt(cellVal.replace(/\D/g, ''), 10) || 0
+    setCellSaving(true)
+    setCellError(null)
+    try {
+      const res = await fetch('/api/payroll/salary-values', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payrollId: cellEdit.payrollId, columnKey: saveKey, month, value: num }),
+      })
+      if (res.ok) {
+        await mutate()
+        setCellEdit(null)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        const msg = data?.error ?? `Lỗi ${res.status}`
+        setCellError(msg)
+        console.error('saveCellEdit API error:', msg, { saveKey, payrollId: cellEdit.payrollId })
+        // Keep cell open so user can see the error
+      }
+    } catch (e) {
+      console.error('saveCellEdit network error:', e)
+      setCellError('Lỗi kết nối')
+    } finally {
+      setCellSaving(false)
+    }
+  }
+
+  function openCellEdit(payrollId: string, colKey: string, raw: number) {
+    setCellEdit({ payrollId, colKey, raw })
+    setCellVal(String(raw))
+  }
+
+  // Employees not yet in this month's payroll (exclude RESIGNED + deleted only)
+  const payrollEmployeeIds = new Set(payrolls.map((p: any) => p.employeeId))
+  const availableEmployees = allEmployees
+    .filter((e: any) => !payrollEmployeeIds.has(e.id) && e.status !== 'RESIGNED')
+    .filter((e: any) => {
+      if (!addEmpSearch) return true
+      const q = addEmpSearch.toLowerCase()
+      return (
+        e.fullName?.toLowerCase().includes(q) ||
+        e.email?.toLowerCase().includes(q) ||
+        e.code?.toLowerCase().includes(q)
+      )
+    })
+
+  /* ─── Transition status ─── */
+  /* ─── Phase 07b: Snapshot modal ─── */
+  const [snapshotModal, setSnapshotModal] = useState<any | null>(null)
+
+  const [statusModal, setStatusModal] = useState<{ id: string; name: string; current: string } | null>(null)
+
+  async function handleStatusChange(id: string, status: string) {
+    try {
+      await updatePayrollStatus(id, status as any)
+      await mutate()
+    } catch (e) {
+      console.error('updatePayrollStatus error:', e)
+    }
+    setStatusModal(null)
+  }
+
+  /* ── Employee self-view rows (data-driven: ALL salary columns) ── */
+  function selfViewRows(p: any): Array<{ label: string; value: string; highlight: boolean; deduction: boolean }> {
+    const rows: Array<{ label: string; value: string; highlight: boolean; deduction: boolean }> = []
+    const rowVars = buildRowVars(p, salaryColumns)
+
+    for (const col of salaryColumns) {
+      const raw = rowVars[col.key] ?? 0
+      const style = COL_STYLE[col.key] ?? 'currency'
+      // Skip columns with 0 value unless it's a number-style column or total
+      if (raw === 0 && style !== 'number' && col.key !== 'tong_thuc_nhan') continue
+      let value: string
+      if (style === 'number') value = raw.toFixed(1)
+      else value = `${fmtVND(raw)} đ`
+      rows.push({
+        label: col.name,
+        value,
+        highlight: col.key === 'tong_thuc_nhan',
+        deduction: style === 'deduction',
+      })
+    }
+
+    // Append insurance + tax — only when master toggle is ON
+    const totalBH = Number(p.bhxhEmployee) + Number(p.bhytEmployee) + Number(p.bhtnEmployee)
+    if (showBhCols && totalBH > 0) rows.push({ label: 'Bảo hiểm (NV đóng)', value: `${fmtVND(totalBH)} đ`, highlight: false, deduction: true })
+    if (showPitCol && Number(p.pitTax) > 0) rows.push({ label: 'Thuế TNCN', value: `${fmtVND(Number(p.pitTax))} đ`, highlight: false, deduction: true })
+
+    return rows
+  }
 
   return (
-    <PageShell breadcrumb="Nhân sự" title="Lương & thưởng">
-      {/* Summary */}
-      <div className="grid grid-cols-4 gap-3">
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="text-[11px] text-gray-500 font-medium">
-            {isEmployee ? 'Lương của tôi (Gross)' : 'Tổng quỹ lương (Gross)'}
+    <PageShell breadcrumb="Nhân sự" title="Lương & Thưởng">
+
+      {/* ── Header toolbar ── */}
+      <div className="flex items-center justify-between gap-4 mb-4">
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-medium text-gray-500">Tháng</label>
+          <input type="month" value={month} onChange={e => setMonth(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+        </div>
+        {canEdit && (
+          <div className="flex items-center gap-2">
+            {recalcMsg && (
+              <span className="text-[11px] text-green-600 font-medium">{recalcMsg}</span>
+            )}
+            <button onClick={handleRecalculate} disabled={recalculating}
+              className="inline-flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 text-xs font-semibold rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-60">
+              <RefreshCw size={12} className={recalculating ? 'animate-spin' : ''} />
+              {recalculating ? 'Đang cập nhật...' : 'Cập nhật lương'}
+            </button>
+            {/* Phase 04: Add employee picker */}
+            <div className="relative" ref={addEmpRef}>
+              <button onClick={() => setAddEmpOpen(v => !v)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-100 text-gray-700 text-xs font-semibold rounded-xl hover:bg-gray-200 transition-colors">
+                <Plus size={12} /> Thêm nhân viên
+              </button>
+              {addEmpOpen && (
+                <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-gray-200 rounded-xl shadow-lg z-30 overflow-hidden">
+                  <div className="p-2 border-b border-gray-100">
+                    <input autoFocus value={addEmpSearch} onChange={e => setAddEmpSearch(e.target.value)}
+                      placeholder="Tìm nhân viên..." className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {empLoading ? (
+                      <div className="px-3 py-2 text-[11px] text-gray-400">Đang tải...</div>
+                    ) : availableEmployees.length === 0 ? (
+                      <div className="px-3 py-2 text-[11px] text-gray-400">
+                        {addEmpSearch ? 'Không tìm thấy nhân viên' : 'Tất cả nhân viên đã có bảng lương'}
+                      </div>
+                    ) : availableEmployees.map((e: any) => (
+                      <button key={e.id} onClick={() => handleAddEmployee(e.id)}
+                        className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors">
+                        <div className="text-xs font-medium text-gray-900">{e.fullName}</div>
+                        <div className="text-[10px] text-gray-400">{e.department} · {e.email}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* Phase 04: Generate missing */}
+            <button onClick={handleGenerateMissing} disabled={generatingMissing}
+              className="inline-flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold rounded-xl hover:bg-emerald-100 transition-colors disabled:opacity-60">
+              <Plus size={12} className={generatingMissing ? 'animate-spin' : ''} />
+              {generatingMissing ? 'Đang tạo...' : 'Tạo bảng lương tháng này'}
+            </button>
+            <button onClick={handleGenerate} disabled={generating}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-60">
+              <RefreshCw size={13} className={generating ? 'animate-spin' : ''} />
+              {generating ? 'Đang tính...' : 'Tính lại tất cả'}
+            </button>
+            {/* Phase 09: Excel export */}
+            <a href={`/api/export/payroll?month=${month}`}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-xl hover:bg-emerald-700 transition-colors"
+              download>
+              <Download size={12} /> Xuất Excel
+            </a>
           </div>
-          <div className="text-lg font-bold text-gray-900 mt-1">{fmtVND(totalGross)} đ</div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="text-[11px] text-gray-500 font-medium">
-            {isEmployee ? 'Lương thực nhận' : 'Tổng thực chi (Net)'}
-          </div>
-          <div className="text-lg font-bold text-blue-600 mt-1">{fmtVND(totalNet)} đ</div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="text-[11px] text-gray-500 font-medium">Đã trả lương</div>
-          <div className="text-lg font-bold text-green-600 mt-1">{filtered.filter(r => r.status === 'paid').length} / {filtered.length}</div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="text-[11px] text-gray-500 font-medium">Chờ duyệt</div>
-          <div className="text-lg font-bold text-amber-600 mt-1">{filtered.filter(r => r.status === 'pending').length}</div>
-        </div>
+        )}
       </div>
 
-      {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3">
-          {!isEmployee && (
-            <div className="relative flex-1 max-w-xs">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Tìm nhân viên..." className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+      {/* ── Manager: Summary cards ── */}
+      {isManager && payrolls.length > 0 && (
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <div className="bg-white border border-gray-200 rounded-2xl p-4">
+            <div className="text-xs text-gray-400 mb-1">Tổng thực nhận</div>
+            <div className="text-2xl font-bold text-blue-600">{fmtVND(totalNet)}</div>
+            <div className="text-[11px] text-gray-400 mt-0.5">đồng</div>
+          </div>
+          <div className="bg-white border border-gray-200 rounded-2xl p-4">
+            <div className="text-xs text-gray-400 mb-1">Tổng lương gộp</div>
+            <div className="text-2xl font-bold text-gray-900">{fmtVND(totalGross)}</div>
+            <div className="text-[11px] text-gray-400 mt-0.5">đồng</div>
+          </div>
+          <div className="bg-white border border-gray-200 rounded-2xl p-4">
+            <div className="text-xs text-gray-400 mb-1">Số nhân viên</div>
+            <div className="text-2xl font-bold text-gray-900">{payrolls.length}</div>
+            <div className="text-[11px] text-gray-400 mt-0.5">người</div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Employee self-view ── */}
+      {!isManager && payrolls.length > 0 && (() => {
+        const p = payrolls[0]
+        const rows = selfViewRows(p)
+        return (
+          <div className="bg-white border border-gray-200 rounded-2xl p-6 max-w-lg mb-4">
+            <div className="mb-5">
+              <div className="text-base font-semibold text-gray-900">{p.employee?.fullName}</div>
+              <div className="text-xs text-gray-400 mt-0.5">{p.employee?.department} · {month}</div>
+              <span className={`inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full mt-1 ${STATUS_MAP[p.status]?.cls ?? ''}`}>
+                {STATUS_MAP[p.status]?.label ?? p.status}
+              </span>
+            </div>
+            <div className="space-y-2.5">
+              {rows.map(row => (
+                <div key={row.label} className={`flex items-center justify-between ${row.highlight ? 'border-t border-gray-100 pt-2.5 mt-2.5' : ''}`}>
+                  <span className={`text-xs ${row.highlight ? 'font-medium text-gray-600' : row.deduction ? 'text-red-400' : 'text-gray-400'}`}>{row.label}</span>
+                  <span className={`font-semibold ${row.highlight ? 'text-2xl text-blue-600' : row.deduction ? 'text-sm text-red-500' : 'text-gray-800 text-sm'}`}>{row.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── Manager: Dynamic Table ── */}
+      {isManager && (
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+          {isLoading ? (
+            <div className="px-4 py-12 text-center text-sm text-gray-400">Đang tải...</div>
+          ) : payrolls.length === 0 ? (
+            <div className="px-4 py-12 text-center">
+              <div className="text-sm text-gray-400 mb-3">Chưa có dữ liệu lương tháng {month}</div>
+              {canEdit && (
+                <button onClick={handleGenerate} disabled={generating}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-60">
+                  <RefreshCw size={13} className={generating ? 'animate-spin' : ''} />
+                  {generating ? 'Đang tính...' : 'Tính lương ngay'}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50/60">
+                    {/* Fixed: Nhân viên */}
+                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400 text-left sticky left-0 bg-gray-50/60 border-r border-gray-100 min-w-[160px] whitespace-nowrap">
+                      Nhân viên
+                    </th>
+                    {/* Dynamic: salary columns */}
+                    {salaryColumns.map(col => (
+                      <th key={col.key}
+                        className={`px-3 py-3 text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap text-right ${
+                          col.key === 'tong_thuc_nhan' ? 'text-blue-600' :
+                          COL_STYLE[col.key] === 'deduction' ? 'text-red-400' : 'text-gray-400'
+                        }`}>
+                        {col.name}
+                      </th>
+                    ))}
+                    {/* Fixed: BH NV, Thuế, Status, Actions */}
+                    {showBhCols && (
+                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400 text-right whitespace-nowrap">BH NV</th>
+                    )}
+                    {showPitCol && (
+                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400 text-right whitespace-nowrap">Thuế TNCN</th>
+                    )}
+                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400 text-center whitespace-nowrap">Trạng thái</th>
+                    <th className="px-2 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payrolls.map((p: any) => {
+                    const totalBH = Number(p.bhxhEmployee) + Number(p.bhytEmployee) + Number(p.bhtnEmployee)
+                    const rowVars = buildRowVars(p, salaryColumns)
+                    return (
+                      <tr key={p.id} className="border-b border-gray-50 hover:bg-blue-50/20 transition-colors">
+                        {/* Fixed: Nhân viên */}
+                        <td className="sticky left-0 bg-white px-3 py-3 border-r border-gray-100 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium text-gray-900">{p.employee?.fullName}</span>
+                            {/* Phase 09: anomaly icons */}
+                            {(() => {
+                              const anomalyList: any[] = p.anomalies ?? []
+                              const hasError = anomalyList.some((a: any) => a.severity === 'error')
+                              const hasWarn  = anomalyList.some((a: any) => a.severity === 'warning')
+                              if (!hasError && !hasWarn) return null
+                              const title = anomalyList.map((a: any) => a.message).join('\n')
+                              return (
+                                <span title={title} className={`cursor-help ${hasError ? 'text-red-500' : 'text-amber-500'}`}>
+                                  <AlertTriangle size={12} />
+                                </span>
+                              )
+                            })()}
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[10px] text-gray-400">{p.employee?.department}</span>
+                            {p.needsRecalc && (
+                              <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600">
+                                ⟳ Cần cập nhật
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        {/* Dynamic: salary columns */}
+                        {salaryColumns.map(col => {
+                          const raw = rowVars[col.key] ?? 0
+                          // Canonical keys in MANUAL_INPUT_MAP are always editable (legacy compat)
+                          // Custom columns: editable if type=number AND isEditable=true in DB
+                          const isManual = col.type !== 'formula' &&
+                            (!!MANUAL_INPUT_MAP[col.key] || col.isEditable === true)
+                          const isEditing = cellEdit?.payrollId === p.id && cellEdit?.colKey === col.key
+                          const canEditCell = canEdit && p.status === 'DRAFT' && isManual
+                          return (
+                            <td key={col.key} className="px-3 py-3 text-right">
+                              {isEditing ? (
+                                <div className="inline-flex flex-col items-end gap-0.5">
+                                  <input autoFocus type="text" value={cellVal}
+                                    onChange={e => { setCellVal(e.target.value); setCellError(null) }}
+                                    onBlur={saveCellEdit}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter') saveCellEdit()
+                                      if (e.key === 'Escape') { setCellEdit(null); setCellError(null) }
+                                    }}
+                                    className={`w-28 border rounded px-2 py-0.5 text-right text-xs focus:outline-none focus:ring-1 bg-blue-50 ${cellError ? 'border-red-400 focus:ring-red-400' : 'border-blue-400 focus:ring-blue-400'}`}
+                                    disabled={cellSaving}
+                                  />
+                                  {cellError && (
+                                    <span className="text-[9px] text-red-500 max-w-[112px] text-right leading-tight">{cellError}</span>
+                                  )}
+                                </div>
+                              ) : canEditCell ? (
+                                <span onClick={() => { setCellError(null); openCellEdit(p.id, col.key, raw) }}
+                                  className="cursor-pointer hover:bg-amber-50 hover:text-amber-700 px-1 py-0.5 rounded transition-colors inline-block"
+                                  title="Click để nhập giá trị">
+                                  {renderCell(col.key, raw)}
+                                </span>
+                              ) : (
+                                renderCell(col.key, raw)
+                              )}
+                            </td>
+                          )
+                        })}
+                        {/* Fixed: BH NV, Thuế */}
+                        {showBhCols && (
+                          <td className="px-3 py-3 text-right text-gray-600">
+                            {totalBH > 0 ? fmtVND(totalBH) : <span className="text-gray-300">—</span>}
+                          </td>
+                        )}
+                        {showPitCol && (
+                          <td className="px-3 py-3 text-right text-gray-600">
+                            {Number(p.pitTax) > 0 ? fmtVND(Number(p.pitTax)) : <span className="text-gray-300">—</span>}
+                          </td>
+                        )}
+                        <td className="px-3 py-3 text-center">
+                          <span className={`inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_MAP[p.status]?.cls ?? ''}`}>
+                            {STATUS_MAP[p.status]?.label ?? p.status}
+                          </span>
+                        </td>
+                        <td className="px-2 py-3 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {canEdit && p.status !== 'PAID' && (
+                              <button onClick={() => setStatusModal({ id: p.id, name: p.employee?.fullName ?? '', current: p.status })}
+                                className="text-[10px] text-blue-600 hover:underline whitespace-nowrap">
+                                Cập nhật
+                              </button>
+                            )}
+                            {canEdit && p.status === 'DRAFT' && (
+                              <button onClick={() => { if (confirm(`Xóa bản lương của ${p.employee?.fullName}?`)) handleDeletePayroll(p.id) }}
+                                className="text-red-400 hover:text-red-600 transition-colors" title="Xóa bản lương">
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                            {(p.status === 'LOCKED' || p.status === 'PAID') && p.snapshot && (
+                              <button onClick={() => setSnapshotModal(p.snapshot)}
+                                className="text-[10px] text-gray-400 hover:text-gray-600 whitespace-nowrap" title="Xem snapshot">
+                                📋
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
-          <div className="relative">
-            <button onClick={() => setShowColPicker(!showColPicker)} className="flex items-center gap-1.5 px-3 py-2 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">
-              {showColPicker ? <EyeOff size={13}/> : <Eye size={13}/>} Cột hiển thị
-            </button>
-            {showColPicker && (
-              <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-10 w-48">
-                {COLUMNS.map(c => (
-                  <label key={c.key} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer text-xs">
-                    <input type="checkbox" checked={visibleCols.has(c.key)} onChange={() => toggleCol(c.key)} className="rounded" />
-                    {c.label}
-                  </label>
-                ))}
+
+          {payrolls.length > 0 && (
+            <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
+              <span>{payrolls.length} nhân viên · {month}</span>
+              <span>Tổng thực nhận: <span className="font-bold text-blue-600">{fmtVND(totalNet)} đ</span></span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Status update modal ── */}
+      {statusModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setStatusModal(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-72 p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-sm font-semibold text-gray-900">{statusModal.name}</p>
+                <p className="text-xs text-gray-400">Hiện tại: {STATUS_MAP[statusModal.current]?.label}</p>
+              </div>
+              <button onClick={() => setStatusModal(null)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+            </div>
+            <div className="space-y-2">
+              {statusModal.current === 'DRAFT' && (
+                <button onClick={() => handleStatusChange(statusModal.id, 'PENDING')}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold rounded-xl hover:bg-amber-100">
+                  <Clock size={13} /> Gửi duyệt
+                </button>
+              )}
+              {statusModal.current === 'PENDING' && (
+                <>
+                  <button onClick={() => handleStatusChange(statusModal.id, 'APPROVED')}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 bg-green-50 border border-green-200 text-green-700 text-xs font-semibold rounded-xl hover:bg-green-100">
+                    <CheckCircle size={13} /> Duyệt lương
+                  </button>
+                  <button onClick={() => handleStatusChange(statusModal.id, 'DRAFT')}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 bg-gray-50 border border-gray-200 text-gray-600 text-xs font-semibold rounded-xl hover:bg-gray-100">
+                    Hoàn về nháp
+                  </button>
+                </>
+              )}
+              {statusModal.current === 'APPROVED' && (
+                <button onClick={() => handleStatusChange(statusModal.id, 'LOCKED')}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 bg-orange-50 border border-orange-200 text-orange-700 text-xs font-semibold rounded-xl hover:bg-orange-100">
+                  🔒 Khóa bảng lương
+                </button>
+              )}
+              {statusModal.current === 'LOCKED' && (
+                <button onClick={() => handleStatusChange(statusModal.id, 'PAID')}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold rounded-xl hover:bg-blue-100">
+                  <Banknote size={13} /> Đánh dấu đã trả
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Phase 07b: Snapshot viewer modal ── */}
+      {snapshotModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setSnapshotModal(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-[480px] max-h-[80vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Snapshot tính lương</h3>
+                {snapshotModal.capturedAt && (
+                  <p className="text-[10px] text-gray-400 mt-0.5">Khóa lúc: {new Date(snapshotModal.capturedAt).toLocaleString('vi-VN')}</p>
+                )}
+              </div>
+              <button onClick={() => setSnapshotModal(null)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+            </div>
+            {/* Vars */}
+            {snapshotModal.vars && (
+              <div className="mb-4">
+                <h4 className="text-[11px] font-semibold text-gray-500 uppercase mb-1.5">Biến đầu vào</h4>
+                <div className="bg-gray-50 rounded-lg px-3 py-2 space-y-0.5">
+                  {Object.entries(snapshotModal.vars as Record<string, number>).map(([k, v]) => (
+                    <div key={k} className="flex justify-between text-[11px]">
+                      <span className="text-gray-400 font-mono">{k}</span>
+                      <span className="text-gray-700">{(v as number).toLocaleString('vi-VN')}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Formula results */}
+            {snapshotModal.formulaResults?.length > 0 && (
+              <div className="mb-4">
+                <h4 className="text-[11px] font-semibold text-gray-500 uppercase mb-1.5">Kết quả công thức</h4>
+                <div className="space-y-0.5">
+                  {(snapshotModal.formulaResults as any[]).map((f: any) => (
+                    <div key={f.columnKey} className="flex justify-between text-[11px] bg-gray-50 rounded px-2 py-1">
+                      <span className="text-gray-600">{f.columnName}</span>
+                      <span className={f.result === null ? 'text-red-500' : 'font-mono text-gray-800'}>
+                        {f.result === null ? 'LỖI' : fmtVND(f.result as number)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Computed */}
+            {snapshotModal.computed && (
+              <div>
+                <h4 className="text-[11px] font-semibold text-gray-500 uppercase mb-1.5">Kết quả cuối</h4>
+                <div className="bg-blue-50 rounded-lg px-3 py-2 space-y-1">
+                  {[
+                    { label: 'Lương gộp', key: 'grossSalary' },
+                    { label: 'BHXH NV', key: 'bhxhEmployee', deduct: true },
+                    { label: 'BHYT NV', key: 'bhytEmployee', deduct: true },
+                    { label: 'BHTN NV', key: 'bhtnEmployee', deduct: true },
+                    { label: 'Thuế TNCN', key: 'pitTax', deduct: true },
+                    { label: 'Thực nhận', key: 'netSalary', bold: true },
+                  ].map(r => (
+                    <div key={r.key} className={`flex justify-between text-[12px] ${r.bold ? 'border-t border-blue-200 pt-1 font-semibold' : ''}`}>
+                      <span className={r.deduct ? 'text-red-500' : 'text-gray-600'}>{r.label}</span>
+                      <span className={r.bold ? 'text-blue-700' : r.deduct ? 'text-red-600' : 'text-gray-800'}>
+                        {r.deduct ? '-' : ''}{fmtVND(snapshotModal.computed[r.key] ?? 0)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
-          <span className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">Tháng 4/2026</span>
-          {!isEmployee && (
-            <button className="ml-auto flex items-center gap-1.5 px-3 py-2 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">
-              <Download size={13} /> Xuất Excel
-            </button>
-          )}
         </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50/50">
-                <th className="text-left px-4 py-2.5 font-semibold text-gray-500 sticky left-0 bg-gray-50/50">Nhân viên</th>
-                <th className="text-left px-4 py-2.5 font-semibold text-gray-500">Phòng ban</th>
-                {COLUMNS.filter(c => visibleCols.has(c.key)).map(c => (
-                  <th key={c.key} className="text-right px-4 py-2.5 font-semibold text-gray-500 whitespace-nowrap">{c.label}</th>
-                ))}
-                <th className="text-center px-4 py-2.5 font-semibold text-gray-500">Trạng thái</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(r => {
-                const st = STATUS_MAP[r.status]
-                return (
-                  <tr key={r.id} className="border-b border-gray-50 hover:bg-blue-50/30">
-                    <td className="px-4 py-2.5 font-medium text-gray-900 sticky left-0 bg-white">{r.employeeName}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{r.department}</td>
-                    {COLUMNS.filter(c => visibleCols.has(c.key)).map(c => {
-                      const val = r[c.key as keyof typeof r] as number
-                      const isKpi = c.key.startsWith('kpi')
-                      return (
-                        <td key={c.key} className={`px-4 py-2.5 text-right font-medium ${c.key === 'totalNet' ? 'text-blue-600 font-bold' : c.key === 'deductions' || c.key === 'tax' ? 'text-red-600' : 'text-gray-900'}`}>
-                          {isKpi ? `${val}%` : fmtVND(val)}
-                        </td>
-                      )
-                    })}
-                    <td className="px-4 py-2.5 text-center">
-                      <span className={`inline-block px-2 py-0.5 rounded border text-[10px] font-semibold ${st.cls}`}>{st.label}</span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-        <div className="px-4 py-3 border-t border-gray-100 text-[11px] text-gray-500">
-          {filtered.length} nhân viên · {isEmployee ? 'Lương thực nhận:' : 'Tổng thực chi:'} <span className="font-bold text-blue-600">{fmtVND(totalNet)} đ</span>
-        </div>
-      </div>
+      )}
     </PageShell>
   )
 }
