@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { UpdatePayrollStatusSchema } from "@/lib/schemas/payroll"
 import { buildPayrollSnapshot } from "@/lib/services/payroll.service"
-import { requireRole, requireSession, canApproveSalary, errorResponse } from "@/lib/permission"
+import { requireRole, requireSession, errorResponse } from "@/lib/permission"
 
 export async function DELETE(
   _req: NextRequest,
@@ -25,11 +25,18 @@ export async function DELETE(
   }
 }
 
-// Phase 07: LOCKED added between APPROVED and PAID
+// Flow: admin sends payroll → employee confirms/rejects
+//  - DRAFT → PENDING:  admin/manager sends payroll to employee for confirmation
+//  - PENDING → LOCKED: employee confirms amount is correct (locks immutably)
+//  - PENDING → DRAFT:  employee rejects (with note) OR admin cancels the send
+//  - LOCKED → PAID:    admin marks paid
+// Legacy APPROVED state is kept as a transition target for backwards compat
+// with any rows that were already in that state, but is no longer reachable
+// through the new flow.
 const VALID_TRANSITIONS: Record<string, string[]> = {
   DRAFT:    ["PENDING"],
-  PENDING:  ["APPROVED", "DRAFT"],
-  APPROVED: ["LOCKED"],
+  PENDING:  ["LOCKED", "DRAFT"],
+  APPROVED: ["LOCKED"], // legacy bridge — existing APPROVED rows can still be locked
   LOCKED:   ["PAID"],
   PAID:     [],
 }
@@ -53,34 +60,36 @@ export async function PATCH(
     const payroll = await db.payroll.findFirst({ where: { id, companyId: ctx.companyId } })
     if (!payroll) return NextResponse.json({ error: "Không tìm thấy" }, { status: 404 })
 
-    // Role-gated transitions:
-    //  - Employee: only own payroll, only DRAFT → PENDING (submit for approval)
-    //  - Manager: can submit (DRAFT → PENDING) and revert (PENDING → DRAFT)
-    //  - Admin: all transitions including approve, lock, mark paid
+    // Role-gated transitions (admin-sends, employee-confirms flow):
+    //  - Employee: own payroll only — confirm (PENDING → LOCKED) or reject (PENDING → DRAFT)
+    //  - Manager: DRAFT → PENDING (send), PENDING → DRAFT (cancel send)
+    //  - Admin: all of the above + LOCKED → PAID
     if (ctx.role === "employee") {
       if (payroll.employeeId !== ctx.employeeId) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 })
       }
-      if (!(payroll.status === "DRAFT" && status === "PENDING")) {
-        return NextResponse.json({ error: "Chỉ được gửi duyệt bảng lương của mình" }, { status: 403 })
+      const employeeAllowed: Array<[string, string]> = [
+        ["PENDING", "LOCKED"], // xác nhận đúng
+        ["PENDING", "DRAFT"],  // từ chối với ghi chú
+      ]
+      if (!employeeAllowed.some(([f, t]) => f === payroll.status && t === status)) {
+        return NextResponse.json(
+          { error: "Nhân viên chỉ được xác nhận hoặc từ chối bảng lương đang chờ xác nhận" },
+          { status: 403 }
+        )
       }
     } else if (ctx.role === "manager") {
       const managerAllowed: Array<[string, string]> = [
-        ["DRAFT", "PENDING"],
-        ["PENDING", "DRAFT"],
+        ["DRAFT", "PENDING"],   // gửi nhân viên xác nhận
+        ["PENDING", "DRAFT"],   // huỷ gửi
       ]
       if (!managerAllowed.some(([f, t]) => f === payroll.status && t === status)) {
-        return NextResponse.json({ error: "Chỉ Admin mới được duyệt/khoá lương" }, { status: 403 })
+        return NextResponse.json({ error: "Chỉ Admin mới được đánh dấu đã trả" }, { status: 403 })
       }
     } else if (ctx.role === "admin") {
       // All transitions allowed by VALID_TRANSITIONS below
     } else {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-    }
-
-    // For approval-level transitions, explicit capability check
-    if ((status === "APPROVED" || status === "LOCKED") && !canApproveSalary(ctx)) {
-      return NextResponse.json({ error: "Không có quyền duyệt lương" }, { status: 403 })
     }
 
     const allowed = VALID_TRANSITIONS[payroll.status] ?? []

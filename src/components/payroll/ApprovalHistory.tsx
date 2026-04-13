@@ -12,11 +12,11 @@ type HistoryEntry = {
 }
 
 const ACTION_META: Record<string, { label: string; icon: React.ReactNode; cls: string }> = {
-  DRAFT:    { label: 'Chuyển về nháp',  icon: <RotateCcw size={13}/>,      cls: 'bg-gray-100 text-gray-600' },
-  PENDING:  { label: 'Gửi duyệt',       icon: <Clock size={13}/>,          cls: 'bg-amber-100 text-amber-700' },
-  APPROVED: { label: 'Đã duyệt',        icon: <CheckCircle2 size={13}/>,   cls: 'bg-green-100 text-green-700' },
-  LOCKED:   { label: 'Đã khoá',         icon: <Lock size={13}/>,           cls: 'bg-orange-100 text-orange-700' },
-  PAID:     { label: 'Đã thanh toán',   icon: <Banknote size={13}/>,       cls: 'bg-blue-100 text-blue-700' },
+  DRAFT:    { label: 'Bị từ chối / sửa lại', icon: <RotateCcw size={13}/>,    cls: 'bg-red-100 text-red-700' },
+  PENDING:  { label: 'Gửi NV xác nhận',      icon: <Clock size={13}/>,        cls: 'bg-amber-100 text-amber-700' },
+  APPROVED: { label: 'Đã duyệt (cũ)',        icon: <CheckCircle2 size={13}/>, cls: 'bg-green-100 text-green-700' },
+  LOCKED:   { label: 'NV xác nhận đúng',     icon: <CheckCircle2 size={13}/>, cls: 'bg-green-100 text-green-700' },
+  PAID:     { label: 'Đã thanh toán',        icon: <Banknote size={13}/>,     cls: 'bg-blue-100 text-blue-700' },
 }
 
 const fetcher = (url: string) => fetch(url).then(r => {

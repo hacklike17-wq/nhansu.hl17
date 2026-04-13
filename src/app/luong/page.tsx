@@ -220,8 +220,12 @@ export default function LuongPage() {
           onMonthChange={setMonth}
           showBhCols={showBhCols}
           showPitCol={showPitCol}
-          onSubmitForApproval={async (id) => {
-            await updatePayrollStatus(id, 'PENDING' as any)
+          onConfirm={async (id) => {
+            await updatePayrollStatus(id, 'LOCKED' as any)
+            await mutate()
+          }}
+          onReject={async (id, note) => {
+            await updatePayrollStatus(id, 'DRAFT' as any, note)
             await mutate()
           }}
         />
@@ -514,25 +518,24 @@ export default function LuongPage() {
               {statusModal.current === 'DRAFT' && (
                 <button onClick={() => handleStatusChange(statusModal.id, 'PENDING')}
                   className="w-full flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold rounded-xl hover:bg-amber-100">
-                  <Clock size={13} /> Gửi duyệt
+                  <Clock size={13} /> Gửi nhân viên xác nhận
                 </button>
               )}
               {statusModal.current === 'PENDING' && (
                 <>
-                  <button onClick={() => handleStatusChange(statusModal.id, 'APPROVED')}
-                    className="w-full flex items-center gap-2 px-3 py-2.5 bg-green-50 border border-green-200 text-green-700 text-xs font-semibold rounded-xl hover:bg-green-100">
-                    <CheckCircle size={13} /> Duyệt lương
-                  </button>
+                  <p className="text-[11px] text-gray-500 px-1 mb-1">
+                    Đang chờ nhân viên xác nhận. Chỉ nhân viên được xác nhận hoặc từ chối.
+                  </p>
                   <button onClick={() => handleStatusChange(statusModal.id, 'DRAFT')}
                     className="w-full flex items-center gap-2 px-3 py-2.5 bg-gray-50 border border-gray-200 text-gray-600 text-xs font-semibold rounded-xl hover:bg-gray-100">
-                    Hoàn về nháp
+                    Huỷ gửi — hoàn về nháp
                   </button>
                 </>
               )}
               {statusModal.current === 'APPROVED' && (
                 <button onClick={() => handleStatusChange(statusModal.id, 'LOCKED')}
                   className="w-full flex items-center gap-2 px-3 py-2.5 bg-orange-50 border border-orange-200 text-orange-700 text-xs font-semibold rounded-xl hover:bg-orange-100">
-                  🔒 Khóa bảng lương
+                  🔒 Khoá bảng lương (legacy)
                 </button>
               )}
               {statusModal.current === 'LOCKED' && (
@@ -540,6 +543,11 @@ export default function LuongPage() {
                   className="w-full flex items-center gap-2 px-3 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold rounded-xl hover:bg-blue-100">
                   <Banknote size={13} /> Đánh dấu đã trả
                 </button>
+              )}
+              {statusModal.current === 'PAID' && (
+                <p className="text-[11px] text-gray-500 px-1 py-2 text-center">
+                  Đã thanh toán — không còn bước nào.
+                </p>
               )}
             </div>
           </div>

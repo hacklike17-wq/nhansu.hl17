@@ -5,13 +5,13 @@
 
 export type PayrollStatus = 'DRAFT' | 'PENDING' | 'APPROVED' | 'LOCKED' | 'PAID'
 
-/** Status badge config — Phase 07: LOCKED added */
+/** Status badge config — flow: admin sends → employee confirms/rejects */
 export const STATUS_MAP: Record<string, { label: string; cls: string }> = {
-  DRAFT:    { label: 'Nháp',           cls: 'bg-gray-100 text-gray-600' },
-  PENDING:  { label: 'Chờ duyệt',      cls: 'bg-amber-100 text-amber-700' },
-  APPROVED: { label: 'Đã duyệt',       cls: 'bg-green-100 text-green-700' },
-  LOCKED:   { label: 'Đã khóa',        cls: 'bg-orange-100 text-orange-700' },
-  PAID:     { label: 'Đã thanh toán',  cls: 'bg-blue-100 text-blue-700' },
+  DRAFT:    { label: 'Nháp',              cls: 'bg-gray-100 text-gray-600' },
+  PENDING:  { label: 'Chờ NV xác nhận',   cls: 'bg-amber-100 text-amber-700' },
+  APPROVED: { label: 'Đã duyệt',          cls: 'bg-green-100 text-green-700' }, // legacy rows
+  LOCKED:   { label: 'Đã xác nhận',       cls: 'bg-green-100 text-green-700' },
+  PAID:     { label: 'Đã thanh toán',     cls: 'bg-blue-100 text-blue-700' },
 }
 
 /** Map salary column key → payroll record field */

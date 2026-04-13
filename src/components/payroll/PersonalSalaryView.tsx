@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { Wallet, TrendingUp, TrendingDown, CheckCircle2, Clock, Lock, Banknote, Send, AlertTriangle, FileText } from 'lucide-react'
+import { Wallet, TrendingUp, TrendingDown, CheckCircle2, Clock, Lock, Banknote, ThumbsUp, ThumbsDown, AlertTriangle, FileText, X } from 'lucide-react'
 import { fmtVND } from '@/lib/format'
 import { STATUS_MAP } from '@/app/luong/_lib/constants'
 import ApprovalHistory from './ApprovalHistory'
@@ -37,7 +37,8 @@ type Props = {
   payroll: PayrollRow | null
   month: string
   onMonthChange: (m: string) => void
-  onSubmitForApproval?: (id: string) => Promise<void>
+  onConfirm?: (id: string) => Promise<void>
+  onReject?: (id: string, note: string) => Promise<void>
   showBhCols?: boolean
   showPitCol?: boolean
 }
@@ -82,27 +83,52 @@ export default function PersonalSalaryView({
   payroll,
   month,
   onMonthChange,
-  onSubmitForApproval,
+  onConfirm,
+  onReject,
   showBhCols = true,
   showPitCol = true,
 }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
+  const [rejectOpen, setRejectOpen] = useState(false)
+  const [rejectNote, setRejectNote] = useState('')
 
   const num = (v: number | string | undefined | null) => Number(v ?? 0)
 
-  async function handleSubmit() {
-    if (!payroll || !onSubmitForApproval) return
+  async function handleConfirm() {
+    if (!payroll || !onConfirm) return
+    if (!confirm('Bạn xác nhận số tiền trên bảng lương này là đúng? Sau khi xác nhận, bảng lương sẽ được khoá và không thể chỉnh sửa.')) return
     setSubmitting(true)
     setFeedback(null)
     try {
-      await onSubmitForApproval(payroll.id)
-      setFeedback('Đã gửi bảng lương để duyệt')
+      await onConfirm(payroll.id)
+      setFeedback('Đã xác nhận bảng lương')
     } catch (e: any) {
-      setFeedback(`Lỗi: ${e.message ?? 'Không thể gửi duyệt'}`)
+      setFeedback(`Lỗi: ${e.message ?? 'Không thể xác nhận'}`)
     } finally {
       setSubmitting(false)
       setTimeout(() => setFeedback(null), 4000)
+    }
+  }
+
+  async function handleReject() {
+    if (!payroll || !onReject) return
+    if (!rejectNote.trim()) {
+      setFeedback('Vui lòng nhập lý do từ chối')
+      return
+    }
+    setSubmitting(true)
+    setFeedback(null)
+    try {
+      await onReject(payroll.id, rejectNote.trim())
+      setRejectOpen(false)
+      setRejectNote('')
+      setFeedback('Đã từ chối bảng lương. Admin sẽ chỉnh sửa và gửi lại.')
+    } catch (e: any) {
+      setFeedback(`Lỗi: ${e.message ?? 'Không thể từ chối'}`)
+    } finally {
+      setSubmitting(false)
+      setTimeout(() => setFeedback(null), 5000)
     }
   }
 
@@ -159,21 +185,55 @@ export default function PersonalSalaryView({
                 </span>
               )}
             </div>
-            {/* Actions */}
-            {payroll.status === 'DRAFT' && onSubmitForApproval && (
+            {/* Actions — flow: admin sends, employee confirms/rejects */}
+            {payroll.status === 'DRAFT' && (
               <div className="relative mt-5 pt-5 border-t border-white/10">
-                <button
-                  onClick={handleSubmit}
-                  disabled={submitting || payroll.needsRecalc}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-blue-700 font-semibold text-xs rounded-lg hover:bg-blue-50 transition disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  <Send size={13}/> {submitting ? 'Đang gửi...' : 'Gửi bảng lương để duyệt'}
-                </button>
-                {payroll.needsRecalc && (
-                  <p className="text-[10px] text-blue-200 mt-2">
-                    Không thể gửi khi bảng lương đang được cập nhật. Vui lòng chờ.
-                  </p>
-                )}
+                <p className="text-[11px] text-blue-100">
+                  {payroll.note
+                    ? <>Admin đang chỉnh sửa bảng lương theo phản hồi. <span className="italic">"{payroll.note}"</span></>
+                    : 'Bảng lương đang được chuẩn bị. Chờ admin gửi để xác nhận.'}
+                </p>
+              </div>
+            )}
+            {payroll.status === 'PENDING' && (onConfirm || onReject) && (
+              <div className="relative mt-5 pt-5 border-t border-white/10">
+                <p className="text-[11px] text-blue-100 mb-3">
+                  Vui lòng kiểm tra kỹ các khoản bên dưới. Bạn cần xác nhận hoặc từ chối bảng lương này.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {onConfirm && (
+                    <button
+                      onClick={handleConfirm}
+                      disabled={submitting}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-green-700 font-semibold text-xs rounded-lg hover:bg-green-50 transition disabled:opacity-60"
+                    >
+                      <ThumbsUp size={13}/> {submitting ? 'Đang xử lý...' : 'Xác nhận đúng'}
+                    </button>
+                  )}
+                  {onReject && (
+                    <button
+                      onClick={() => setRejectOpen(true)}
+                      disabled={submitting}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-red-500/20 text-white border border-red-300/40 font-semibold text-xs rounded-lg hover:bg-red-500/30 transition disabled:opacity-60"
+                    >
+                      <ThumbsDown size={13}/> Không đúng — từ chối
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {payroll.status === 'LOCKED' && (
+              <div className="relative mt-5 pt-5 border-t border-white/10">
+                <p className="text-[11px] text-blue-100 inline-flex items-center gap-1.5">
+                  <Lock size={12}/> Bạn đã xác nhận bảng lương này. Không thể chỉnh sửa.
+                </p>
+              </div>
+            )}
+            {payroll.status === 'PAID' && (
+              <div className="relative mt-5 pt-5 border-t border-white/10">
+                <p className="text-[11px] text-blue-100 inline-flex items-center gap-1.5">
+                  <CheckCircle2 size={12}/> Đã thanh toán.
+                </p>
               </div>
             )}
             {feedback && (
@@ -290,6 +350,63 @@ export default function PersonalSalaryView({
           {/* Approval history timeline */}
           <ApprovalHistory payrollId={payroll.id}/>
         </>
+      )}
+
+      {/* Reject modal — employee notes reason when rejecting */}
+      {rejectOpen && payroll && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => !submitting && setRejectOpen(false)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="bg-white rounded-2xl shadow-xl w-full max-w-md"
+          >
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">Từ chối bảng lương</h3>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  Ghi rõ lý do để admin chỉnh sửa.
+                </p>
+              </div>
+              <button
+                onClick={() => !submitting && setRejectOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={18}/>
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <label className="block text-[11px] font-semibold text-gray-600">
+                Lý do (bắt buộc)
+              </label>
+              <textarea
+                value={rejectNote}
+                onChange={e => setRejectNote(e.target.value)}
+                rows={4}
+                autoFocus
+                placeholder="VD: Thiếu phụ cấp tháng, tính sai tăng ca ngày 15..."
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none"
+              />
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setRejectOpen(false)}
+                disabled={submitting}
+                className="px-4 py-2 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-60"
+              >
+                Huỷ
+              </button>
+              <button
+                onClick={handleReject}
+                disabled={submitting || !rejectNote.trim()}
+                className="inline-flex items-center gap-1.5 px-5 py-2 text-xs text-white bg-red-600 rounded-lg hover:bg-red-700 font-semibold disabled:opacity-60"
+              >
+                <ThumbsDown size={13}/> {submitting ? 'Đang gửi...' : 'Gửi từ chối'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
