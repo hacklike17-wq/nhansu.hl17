@@ -17,17 +17,19 @@ if (process.env.NODE_ENV === "production") {
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" })
 const db = new PrismaClient({ adapter })
 
-const COMPANY_ID = "company_hl17_seed"
+const COMPANY_SEED_ID = "company_hl17_seed"
 
 async function main() {
   console.log("🌱 Bắt đầu seed...")
 
   // ── Company ──────────────────────────────────────────────────
+  // Upsert by taxId → reuse existing row if present, else create with COMPANY_SEED_ID.
+  // Downstream rows reference the resolved company.id (not the hardcoded seed id).
   const company = await db.company.upsert({
     where: { taxId: "0123456789" },
     update: {},
     create: {
-      id: COMPANY_ID,
+      id: COMPANY_SEED_ID,
       name: "Công ty TNHH HL17",
       taxId: "0123456789",
       address: "Hà Nội, Việt Nam",
@@ -39,7 +41,8 @@ async function main() {
     },
   })
 
-  console.log(`✓ Company: ${company.name}`)
+  const COMPANY_ID = company.id
+  console.log(`✓ Company: ${company.name} (${COMPANY_ID})`)
 
   // ── CompanySettings ──────────────────────────────────────────
   await db.companySettings.upsert({
