@@ -126,6 +126,7 @@ export const ROUTE_PERMISSION: Record<string, string> = {
   '/luong': 'luong.view',
   '/tuyendung': 'tuyendung.view',
   '/nghiphep': 'nghiphep.view',
+  '/khong-luong': 'nghiphep.view',
   '/doanhthu': 'doanhthu.view',
   '/chiphi': 'chiphi.view',
   '/dongtien': 'dongtien.view',
@@ -460,10 +461,11 @@ export const NAV_SECTIONS = [
   {
     label: 'Nhân sự',
     items: [
-      { label:'Nhân viên',      href:'/nhanvien',  icon:'users' },
-      { label:'Công số',        href:'/chamcong',  icon:'calendar' },
-      { label:'Lương & thưởng', href:'/luong',     icon:'clock' },
-      { label:'Tuyển dụng',     href:'/tuyendung', icon:'arrow', badge:{ text:'5', variant:'amber' as const } },
+      { label:'Nhân viên',         href:'/nhanvien',    icon:'users' },
+      { label:'Công số',           href:'/chamcong',    icon:'calendar' },
+      { label:'Lương & thưởng',    href:'/luong',       icon:'clock' },
+      { label:'Nghỉ không lương',  href:'/khong-luong', icon:'calendar' },
+      { label:'Tuyển dụng',        href:'/tuyendung',   icon:'arrow', badge:{ text:'5', variant:'amber' as const } },
     ],
   },
   {

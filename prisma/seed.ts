@@ -344,6 +344,37 @@ async function main() {
   })
   console.log("✓ LeaveRequest: 1 mẫu approved")
 
+  // ── Sample KpiViolations — để dashboard có số liệu thật cho DM/NP/NS/KL/QC ──
+  // Chỉ seed nếu chưa có — idempotent
+  const existingKpiCount = await db.kpiViolation.count({ where: { companyId: COMPANY_ID } })
+  if (existingKpiCount === 0) {
+    const hrEmp = employeesData.find((e) => e.id === "emp_hr_001")!
+    const accEmp = employeesData.find((e) => e.id === "emp_acc_001")!
+    const kpiSamples: Array<{ employeeId: string; day: number; types: string[] }> = [
+      { employeeId: devEmployee.id, day: 2,  types: ["DM"] },           // đi muộn 1 hôm
+      { employeeId: devEmployee.id, day: 3,  types: ["NP"] },           // nghỉ phép (từ leave seed)
+      { employeeId: devEmployee.id, day: 4,  types: ["NP"] },
+      { employeeId: hrEmp.id,       day: 7,  types: ["DM", "QC"] },     // đi muộn + quên chấm
+      { employeeId: hrEmp.id,       day: 15, types: ["KL"] },           // nghỉ không lương
+      { employeeId: accEmp.id,      day: 9,  types: ["NS"] },           // nghỉ sai
+      { employeeId: accEmp.id,      day: 22, types: ["QC"] },
+    ]
+    for (const k of kpiSamples) {
+      await db.kpiViolation.create({
+        data: {
+          companyId: COMPANY_ID,
+          employeeId: k.employeeId,
+          date: new Date(Date.UTC(april2026.year, april2026.month, k.day)),
+          types: k.types,
+          note: "Seed sample",
+        },
+      })
+    }
+    console.log(`✓ KpiViolations: ${kpiSamples.length} mẫu`)
+  } else {
+    console.log(`✓ KpiViolations: giữ nguyên ${existingKpiCount} records`)
+  }
+
   console.log("\n✅ Seed hoàn tất!")
   console.log("\n📋 Tài khoản mẫu (mật khẩu: 123456):")
   for (const e of employeesData) {

@@ -32,7 +32,12 @@ export async function POST(
     const companyId = leaveRequest.companyId
 
   if (action === "APPROVED") {
-    // Tạo DeductionEvents — 1 record/ngày trong transaction
+    // Tạo DeductionEvents + KpiViolation — 1 record/ngày trong transaction
+    // KPI code:
+    //   - UNPAID  → "KL" (Không lương)
+    //   - khác    → "NP" (Nghỉ phép có hưởng / paid leave)
+    const kpiCode = leaveRequest.type === "UNPAID" ? "KL" : "NP"
+
     await db.$transaction(async (tx: any) => {
       // Concurrency guard: double-approve prevention
       const current = await tx.leaveRequest.findUnique({
@@ -50,23 +55,25 @@ export async function POST(
         },
       })
 
-      // Tạo 1 DeductionEvent mỗi ngày nghỉ
+      // Enumerate working days of the leave range
       const start = new Date(leaveRequest.startDate)
       const end = new Date(leaveRequest.endDate)
-      const events = []
+      const events: any[] = []
+      const workdayDates: Date[] = []
       const cursor = new Date(start)
       while (cursor <= end) {
         const dow = cursor.getUTCDay()
-        // Bỏ qua thứ 7 (6) và CN (0) — chỉ ngày làm việc
         if (dow !== 0 && dow !== 6) {
+          const day = new Date(cursor)
+          workdayDates.push(day)
           events.push({
             companyId,
             employeeId: leaveRequest.employeeId,
             leaveRequestId: id,
-            date: new Date(cursor),
+            date: day,
             type: "NGHI_NGAY" as const,
             delta: -1,
-            reason: `Nghỉ phép — đơn ${id.slice(0, 8)}`,
+            reason: `${leaveRequest.type === "UNPAID" ? "Nghỉ không lương" : "Nghỉ phép"} — đơn ${id.slice(0, 8)}`,
             status: "APPROVED" as const,
             approvedBy: ctx.userId,
             approvedAt: new Date(),
@@ -79,6 +86,50 @@ export async function POST(
         await tx.deductionEvent.createMany({ data: events })
       }
 
+      // Merge KPI code into KpiViolation row for each workday.
+      // Pattern: if a row already exists for (employeeId, date), add kpiCode
+      // to its types array; else create a new row with types=[kpiCode].
+      if (workdayDates.length > 0) {
+        const existingKpis = await tx.kpiViolation.findMany({
+          where: {
+            companyId,
+            employeeId: leaveRequest.employeeId,
+            date: { in: workdayDates },
+          },
+          select: { id: true, date: true, types: true },
+        })
+        const existingMap = new Map<string, { id: string; types: string[] }>()
+        for (const k of existingKpis) {
+          existingMap.set((k.date as Date).toISOString().slice(0, 10), {
+            id: k.id,
+            types: k.types,
+          })
+        }
+
+        for (const day of workdayDates) {
+          const key = day.toISOString().slice(0, 10)
+          const existing = existingMap.get(key)
+          if (existing) {
+            if (!existing.types.includes(kpiCode)) {
+              await tx.kpiViolation.update({
+                where: { id: existing.id },
+                data: { types: [...existing.types, kpiCode] },
+              })
+            }
+          } else {
+            await tx.kpiViolation.create({
+              data: {
+                companyId,
+                employeeId: leaveRequest.employeeId,
+                date: day,
+                types: [kpiCode],
+                note: `Tự động từ đơn ${leaveRequest.type === "UNPAID" ? "nghỉ không lương" : "nghỉ phép"} ${id.slice(0, 8)}`,
+              },
+            })
+          }
+        }
+      }
+
       await tx.auditLog.create({
         data: {
           companyId,
@@ -86,12 +137,17 @@ export async function POST(
           entityId: id,
           action: "APPROVED",
           changedBy: ctx.userId,
-          changes: { totalDays: events.length, type: leaveRequest.type },
+          changes: {
+            totalDays: events.length,
+            type: leaveRequest.type,
+            kpiCode,
+          },
         },
       })
     })
   } else {
-    // REJECTED or CANCELLED
+    // REJECTED or CANCELLED — undo side-effects if any
+    const kpiCode = leaveRequest.type === "UNPAID" ? "KL" : "NP"
     await db.$transaction(async (tx: any) => {
       await tx.leaveRequest.update({
         where: { id },
@@ -101,8 +157,38 @@ export async function POST(
           approvedAt: new Date(),
         },
       })
-      // Xóa DeductionEvents liên quan (nếu có từ lần approve trước)
       await tx.deductionEvent.deleteMany({ where: { leaveRequestId: id } })
+
+      // Remove the KPI code from any rows that were set by this leave's range.
+      // Iterate the range again (cheap: at most ~30 days) and strip kpiCode.
+      const start = new Date(leaveRequest.startDate)
+      const end = new Date(leaveRequest.endDate)
+      const workdayDates: Date[] = []
+      const cursor = new Date(start)
+      while (cursor <= end) {
+        const dow = cursor.getUTCDay()
+        if (dow !== 0 && dow !== 6) workdayDates.push(new Date(cursor))
+        cursor.setUTCDate(cursor.getUTCDate() + 1)
+      }
+      if (workdayDates.length > 0) {
+        const rows = await tx.kpiViolation.findMany({
+          where: {
+            companyId,
+            employeeId: leaveRequest.employeeId,
+            date: { in: workdayDates },
+          },
+          select: { id: true, types: true },
+        })
+        for (const r of rows) {
+          if (!r.types.includes(kpiCode)) continue
+          const remaining = r.types.filter((t: string) => t !== kpiCode)
+          if (remaining.length === 0) {
+            await tx.kpiViolation.delete({ where: { id: r.id } })
+          } else {
+            await tx.kpiViolation.update({ where: { id: r.id }, data: { types: remaining } })
+          }
+        }
+      }
     })
   }
 

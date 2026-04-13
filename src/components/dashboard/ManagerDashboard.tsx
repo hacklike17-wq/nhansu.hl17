@@ -1,5 +1,6 @@
 import { Users, Clock, CalendarDays } from "lucide-react"
 import StatCard from "./StatCard"
+import AttendanceKpiPanel from "./AttendanceKpiPanel"
 import type { ManagerStats } from "@/app/_lib/dashboard-queries"
 
 const STATUS_LABEL: Record<string, string> = {
@@ -42,6 +43,11 @@ export default function ManagerDashboard({ stats, userName }: { stats: ManagerSt
           tone="purple"
         />
       </div>
+
+      <AttendanceKpiPanel
+        kpi={stats.attendanceKpi}
+        subtitle={`KPI chuyên cần toàn công ty · tháng ${stats.currentMonth}`}
+      />
 
       <div className="bg-white border border-gray-200 rounded-xl p-5">
         <div className="text-sm font-bold text-gray-900 mb-3">Trạng thái bảng lương tháng {stats.currentMonth}</div>

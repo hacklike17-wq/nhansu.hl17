@@ -1,5 +1,6 @@
 import { Users, UserCheck, Clock, CheckCircle2, CalendarDays, Wallet } from "lucide-react"
 import StatCard from "./StatCard"
+import AttendanceKpiPanel from "./AttendanceKpiPanel"
 import type { AdminStats } from "@/app/_lib/dashboard-queries"
 
 function formatVnd(n: number) {
@@ -28,6 +29,11 @@ export default function AdminDashboard({ stats, userName }: { stats: AdminStats;
           tone="red"
         />
       </div>
+
+      <AttendanceKpiPanel
+        kpi={stats.attendanceKpi}
+        subtitle={`Tổng lượt vi phạm chuyên cần toàn công ty · tháng ${stats.currentMonth}`}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <a

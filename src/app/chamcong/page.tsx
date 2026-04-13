@@ -8,7 +8,7 @@ import { useDeductions } from '@/hooks/useDeductions'
 import { useKpiViolations, upsertKpiViolation } from '@/hooks/useKpiViolations'
 import { useOvertimeEntries, upsertOvertimeEntry } from '@/hooks/useOvertimeEntries'
 import type { KpiViolationType } from '@/types'
-import { X, Calendar, Trash2 } from 'lucide-react'
+import { X, Calendar, Trash2, Sparkles } from 'lucide-react'
 
 /* ══════════���════════════════════════════════════════
    SHARED HELPERS
@@ -61,10 +61,10 @@ function otLabel(hours: number | null): string {
    TABLE 3 — KPI CHUYÊN CẦN
    ═══════════════════════════════════════════════════ */
 const KPI_CONFIG: Record<KpiViolationType, { full: string; cls: string; dot: string }> = {
-  DM: { full: 'Đi muộn',          cls: 'bg-amber-100 text-amber-700 border-amber-200', dot: 'bg-amber-400' },
-  NP: { full: 'Nghỉ phép',        cls: 'bg-blue-100 text-blue-700 border-blue-200',   dot: 'bg-blue-400'  },
-  NS: { full: 'Nghỉ sai',         cls: 'bg-red-100 text-red-700 border-red-200',      dot: 'bg-red-400'   },
-  KL: { full: 'Kỷ luật',          cls: 'bg-rose-100 text-rose-800 border-rose-200',   dot: 'bg-rose-500'  },
+  DM: { full: 'Đi muộn',          cls: 'bg-amber-100 text-amber-700 border-amber-200',     dot: 'bg-amber-400' },
+  NP: { full: 'Nghỉ phép',        cls: 'bg-blue-100 text-blue-700 border-blue-200',       dot: 'bg-blue-400'  },
+  NS: { full: 'Nghỉ sai',         cls: 'bg-red-100 text-red-700 border-red-200',          dot: 'bg-red-400'   },
+  KL: { full: 'Không lương',      cls: 'bg-rose-100 text-rose-800 border-rose-200',       dot: 'bg-rose-500'  },
   QC: { full: 'Quên chấm công',   cls: 'bg-orange-100 text-orange-700 border-orange-200', dot: 'bg-orange-400' },
 }
 const KPI_TYPES = Object.keys(KPI_CONFIG) as KpiViolationType[]
@@ -110,6 +110,8 @@ export default function ChamCongPage() {
   const todayMonth = new Date().toISOString().slice(0, 7)
   const [month, setMonth] = useState(todayMonth)
   const days = useMemo(() => getDays(month), [month])
+  const [initializing, setInitializing] = useState(false)
+  const [initMsg, setInitMsg] = useState<string | null>(null)
 
   // API data
   const { employees: rawEmployees } = useEmployees()
@@ -232,6 +234,33 @@ export default function ChamCongPage() {
     }
   }
 
+  /* ══════════════ TASK 1: INIT MONTH — default work_count=1 per workday ══════════════ */
+  async function handleInitMonth() {
+    if (!isManager || initializing) return
+    setInitializing(true)
+    setInitMsg(null)
+    try {
+      const res = await fetch('/api/work-units/init-month', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error ?? 'Không thể khởi tạo')
+      await mutateWU()
+      setInitMsg(
+        data.created > 0
+          ? `Đã tạo ${data.created} ngày công mặc định`
+          : 'Tất cả ngày công đã được khởi tạo'
+      )
+    } catch (e: any) {
+      setInitMsg(`Lỗi: ${e.message}`)
+    } finally {
+      setInitializing(false)
+      setTimeout(() => setInitMsg(null), 4000)
+    }
+  }
+
   /* ══════════════ TABLE 2: TĂNG CA ══════════════ */
   type OtEdit = { empId: string; empName: string; date: string }
   const [otEdit,    setOtEdit]    = useState<OtEdit | null>(null)
@@ -330,12 +359,28 @@ export default function ChamCongPage() {
       <div className="max-w-screen-2xl">
 
       {/* ── Toolbar ── */}
-      <div className="flex items-center gap-4 mb-3">
+      <div className="flex items-center gap-4 mb-3 flex-wrap">
         <div className="flex items-center gap-2">
           <label className="text-xs font-medium text-gray-400">Tháng</label>
           <input type="month" value={month} onChange={e => setMonth(e.target.value)}
             className="border border-gray-200 rounded-lg px-2.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 h-8" />
         </div>
+        {isManager && (
+          <button
+            onClick={handleInitMonth}
+            disabled={initializing}
+            className="inline-flex items-center gap-1.5 px-3 h-8 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-60"
+            title="Tạo công số mặc định (1 công/ngày) cho tất cả nhân viên trong các ngày làm việc của tháng"
+          >
+            <Sparkles size={13}/>
+            {initializing ? 'Đang khởi tạo...' : 'Khởi tạo công số'}
+          </button>
+        )}
+        {initMsg && (
+          <span className={`text-[11px] font-medium ${initMsg.startsWith('Lỗi') ? 'text-red-500' : 'text-green-600'}`}>
+            {initMsg}
+          </span>
+        )}
         <div className="h-4 w-px bg-gray-200" />
         <div className="flex items-center gap-2.5 text-[11px] text-gray-400">
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-green-100 border border-green-300 inline-block" /> 1 công</span>

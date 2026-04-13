@@ -1,5 +1,6 @@
 import { Wallet, CalendarCheck, CalendarDays, AlertTriangle } from "lucide-react"
 import StatCard from "./StatCard"
+import AttendanceKpiPanel from "./AttendanceKpiPanel"
 import type { EmployeeStats } from "@/app/_lib/dashboard-queries"
 
 const STATUS_LABEL: Record<string, string> = {
@@ -100,6 +101,12 @@ export default function EmployeeDashboard({ stats, userName }: { stats: Employee
           tone="purple"
         />
       </div>
+
+      <AttendanceKpiPanel
+        kpi={stats.myAttendanceKpi}
+        title="KPI chuyên cần của tôi"
+        subtitle={`Tổng lượt vi phạm chuyên cần · tháng ${stats.currentMonth}`}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <a href="/chamcong" className="bg-white border border-gray-200 rounded-xl p-5 hover:border-blue-300 hover:shadow-sm transition">
