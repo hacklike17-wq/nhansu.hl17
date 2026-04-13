@@ -1,14 +1,15 @@
 'use client'
 import useSWR from 'swr'
+import { useState } from 'react'
 import {
-  BarChart,
-  Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Cell,
+  Legend,
 } from 'recharts'
 import { TrendingUp, RefreshCw } from 'lucide-react'
 
@@ -19,6 +20,7 @@ type Series = {
   gross: number
   base: number
   status: string
+  kpiCount: number
 }
 
 type ApiResponse = {
@@ -43,25 +45,32 @@ function fmtVnd(n: number): string {
 
 function TooltipContent({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
-  const item = payload[0].payload as Series
+  const item = payload[0]?.payload as Series | undefined
+  if (!item) return null
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs">
       <div className="font-semibold text-gray-900">{label}</div>
-      <div className="text-gray-500 mt-0.5">
-        Net: <span className="font-bold text-blue-600 tabular-nums">
+      <div className="text-gray-500 mt-1">
+        Tổng lương:{' '}
+        <span className="font-bold text-blue-600 tabular-nums">
           {new Intl.NumberFormat('vi-VN').format(item.net)} ₫
         </span>
       </div>
-      <div className="text-[10px] text-gray-400 mt-0.5">
-        Gross: {new Intl.NumberFormat('vi-VN').format(item.gross)} ₫
+      <div className="text-gray-500 mt-0.5">
+        KPI vi phạm:{' '}
+        <span className={`font-bold tabular-nums ${item.kpiCount > 0 ? 'text-rose-600' : 'text-gray-500'}`}>
+          {item.kpiCount} ngày
+        </span>
       </div>
     </div>
   )
 }
 
 export default function MySalaryHistoryChart() {
+  const [months, setMonths] = useState<6 | 12>(6)
+
   const { data, error, isLoading, mutate } = useSWR<ApiResponse>(
-    '/api/dashboard/my-salary-history?months=6',
+    `/api/dashboard/my-salary-history?months=${months}`,
     fetcher,
     { revalidateOnFocus: true, refreshInterval: 60_000, dedupingInterval: 2_000 }
   )
@@ -69,34 +78,49 @@ export default function MySalaryHistoryChart() {
   const series = data?.series ?? []
   const average = data?.average ?? 0
 
-  // Highlight current (last) month with a darker color
-  const highlightKey = series.length > 0 ? series[series.length - 1].key : null
-
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5">
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-            <TrendingUp size={18}/>
+            <TrendingUp size={18} />
           </div>
           <div>
-            <div className="text-sm font-bold text-gray-900">Lịch sử lương 6 tháng gần nhất</div>
+            <div className="text-sm font-bold text-gray-900">
+              Lịch sử lương {months} tháng gần nhất
+            </div>
             <div className="text-[11px] text-gray-400 mt-0.5">
               {series.length > 0
-                ? `${series.length} tháng có dữ liệu`
+                ? `${series.length} tháng có dữ liệu · biểu đồ đường`
                 : 'Chưa có dữ liệu lương'}
             </div>
           </div>
         </div>
-        <button
-          onClick={() => mutate()}
-          disabled={isLoading}
-          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 h-7"
-          title="Đồng bộ"
-        >
-          <RefreshCw size={11} className={isLoading ? 'animate-spin' : ''} />
-          Đồng bộ
-        </button>
+        <div className="flex items-center gap-1.5">
+          <div className="inline-flex rounded-md border border-gray-200 bg-gray-50 p-0.5">
+            {([6, 12] as const).map(p => (
+              <button
+                key={p}
+                onClick={() => setMonths(p)}
+                className={`px-3 py-1 text-[11px] font-semibold rounded transition ${
+                  months === p
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                {p} tháng
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => mutate()}
+            disabled={isLoading}
+            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 h-[26px]"
+            title="Đồng bộ"
+          >
+            <RefreshCw size={11} className={isLoading ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -105,7 +129,7 @@ export default function MySalaryHistoryChart() {
 
       {series.length === 0 ? (
         <div className="py-12 text-center text-xs text-gray-400">
-          Chưa có bảng lương nào trong 6 tháng gần nhất
+          Chưa có bảng lương nào trong {months} tháng gần nhất
         </div>
       ) : (
         <>
@@ -142,9 +166,9 @@ export default function MySalaryHistoryChart() {
             )}
           </div>
 
-          <div className="h-[220px] w-full">
+          <div className="h-[260px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: -10 }}>
+              <LineChart data={series} margin={{ top: 8, right: 16, bottom: 0, left: -10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
                 <XAxis
                   dataKey="label"
@@ -153,22 +177,51 @@ export default function MySalaryHistoryChart() {
                   tickLine={false}
                 />
                 <YAxis
+                  yAxisId="left"
                   tick={{ fill: '#9ca3af', fontSize: 10 }}
                   tickFormatter={fmtVnd}
                   axisLine={{ stroke: '#e5e7eb' }}
                   tickLine={false}
                   width={55}
                 />
-                <Tooltip content={<TooltipContent />} cursor={{ fill: '#f3f4f6' }} />
-                <Bar dataKey="net" radius={[6, 6, 0, 0]} maxBarSize={48}>
-                  {series.map(entry => (
-                    <Cell
-                      key={entry.key}
-                      fill={entry.key === highlightKey ? '#1d4ed8' : '#93c5fd'}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  tick={{ fill: '#9ca3af', fontSize: 10 }}
+                  axisLine={{ stroke: '#e5e7eb' }}
+                  tickLine={false}
+                  width={32}
+                  allowDecimals={false}
+                />
+                <Tooltip content={<TooltipContent />} cursor={{ stroke: '#e5e7eb', strokeWidth: 1 }} />
+                <Legend
+                  wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+                  iconType="line"
+                />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="net"
+                  name="Tổng lương nhận (₫)"
+                  stroke="#2563eb"
+                  strokeWidth={2.5}
+                  dot={{ r: 4, fill: '#2563eb' }}
+                  activeDot={{ r: 6 }}
+                  connectNulls={false}
+                />
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="kpiCount"
+                  name="KPI chuyên cần (số ngày vp)"
+                  stroke="#e11d48"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={{ r: 3, fill: '#e11d48' }}
+                  activeDot={{ r: 5 }}
+                  connectNulls={false}
+                />
+              </LineChart>
             </ResponsiveContainer>
           </div>
         </>

@@ -31,36 +31,60 @@ export async function GET(req: NextRequest) {
 
     const now = new Date()
     const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1))
+    // Inclusive end = last day of current month
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))
 
-    const rows = await db.payroll.findMany({
-      where: {
-        companyId: ctx.companyId,
-        employeeId: ctx.employeeId,
-        month: { gte: start },
-      },
-      select: {
-        month: true,
-        netSalary: true,
-        grossSalary: true,
-        baseSalary: true,
-        status: true,
-        paidAt: true,
-        approvedAt: true,
-      },
-      orderBy: { month: "asc" },
-    })
+    const [payrolls, kpiRows] = await Promise.all([
+      db.payroll.findMany({
+        where: {
+          companyId: ctx.companyId,
+          employeeId: ctx.employeeId,
+          month: { gte: start },
+        },
+        select: {
+          month: true,
+          netSalary: true,
+          grossSalary: true,
+          baseSalary: true,
+          status: true,
+          paidAt: true,
+          approvedAt: true,
+        },
+        orderBy: { month: "asc" },
+      }),
+      // KpiViolation count grouped by month — using raw rows since groupBy by
+      // truncated month isn't supported directly. We do the grouping in JS.
+      db.kpiViolation.findMany({
+        where: {
+          companyId: ctx.companyId,
+          employeeId: ctx.employeeId,
+          date: { gte: start, lte: end },
+        },
+        select: { date: true },
+      }),
+    ])
 
-    const series = rows.map(r => {
+    // Build month → kpiCount map (count of ROWS, matching manager-team metric)
+    const kpiCountByMonth = new Map<string, number>()
+    for (const k of kpiRows) {
+      const d = k.date as Date
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`
+      kpiCountByMonth.set(key, (kpiCountByMonth.get(key) ?? 0) + 1)
+    }
+
+    const series = payrolls.map(r => {
       const d = r.month as Date
       const y = d.getUTCFullYear()
       const m = d.getUTCMonth() + 1
+      const key = `${y}-${String(m).padStart(2, "0")}`
       return {
-        key: `${y}-${String(m).padStart(2, "0")}`,
+        key,
         label: `${String(m).padStart(2, "0")}/${y}`,
         net: Number(r.netSalary),
         gross: Number(r.grossSalary),
         base: Number(r.baseSalary),
         status: r.status,
+        kpiCount: kpiCountByMonth.get(key) ?? 0,
       }
     })
 
