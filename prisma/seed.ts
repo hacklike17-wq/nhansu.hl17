@@ -238,9 +238,20 @@ async function main() {
   const hashedPw = await bcrypt.hash("123456", 12)
 
   for (const e of employeesData) {
+    // Idempotent: always reset employee to WORKING/ACTIVE and un-soft-delete
+    // so re-running the seed restores test accounts even after prior test runs
+    // soft-deleted them.
     const emp = await db.employee.upsert({
       where: { companyId_email: { companyId: COMPANY_ID, email: e.email } },
-      update: { fullName: e.fullName, department: e.department, position: e.position },
+      update: {
+        fullName: e.fullName,
+        department: e.department,
+        position: e.position,
+        accountStatus: "ACTIVE",
+        status: "WORKING",
+        deletedAt: null,
+        endDate: null,
+      },
       create: {
         id: e.id,
         companyId: COMPANY_ID,
@@ -256,10 +267,16 @@ async function main() {
       },
     })
 
-    // User account
+    // User account — always refresh password and role (idempotent)
     await db.user.upsert({
       where: { email: e.email },
-      update: {},
+      update: {
+        password: hashedPw,
+        role: e.role,
+        name: e.fullName,
+        employeeId: emp.id,
+        companyId: COMPANY_ID,
+      },
       create: {
         email: e.email,
         name: e.fullName,

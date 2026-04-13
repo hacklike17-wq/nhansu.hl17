@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { z } from "zod"
-import { requirePermission, requireSession, errorResponse } from "@/lib/permission"
+import { requirePermission, errorResponse } from "@/lib/permission"
 
 const CreateGroupSchema = z.object({
   name: z.string().min(1),
@@ -12,7 +12,7 @@ const CreateGroupSchema = z.object({
 
 export async function GET() {
   try {
-    const ctx = await requireSession()
+    const ctx = await requirePermission("phanquyen.view")
     const groups = await db.permissionGroup.findMany({
       where: { companyId: ctx.companyId ?? undefined },
       orderBy: { createdAt: "asc" },

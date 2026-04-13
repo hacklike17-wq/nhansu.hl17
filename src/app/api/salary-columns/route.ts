@@ -4,7 +4,7 @@ import { z } from "zod"
 import { validateFormula, buildDependencyGraph, detectCircular } from "@/lib/formula"
 import { SYSTEM_VAR_KEYS, RESERVED_VARS, SAMPLE_VARS } from "@/constants/salary"
 import { markDraftPayrollsStale, recalculateMonth } from "@/lib/services/payroll.service"
-import { requireSession, requireRole, errorResponse } from "@/lib/permission"
+import { requirePermission, requireRole, errorResponse } from "@/lib/permission"
 
 const CalcModeEnum = z.enum(["none", "add_to_net", "subtract_from_net"])
 
@@ -20,7 +20,7 @@ const CreateColumnSchema = z.object({
 
 export async function GET() {
   try {
-    const ctx = await requireSession()
+    const ctx = await requirePermission("luong.view")
     const columns = await db.salaryColumn.findMany({
       where: { companyId: ctx.companyId ?? undefined },
       orderBy: { order: "asc" },
