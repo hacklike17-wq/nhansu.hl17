@@ -8,7 +8,7 @@ import { useDeductions } from '@/hooks/useDeductions'
 import { useKpiViolations, upsertKpiViolation } from '@/hooks/useKpiViolations'
 import { useOvertimeEntries, upsertOvertimeEntry } from '@/hooks/useOvertimeEntries'
 import type { KpiViolationType } from '@/types'
-import { X, Calendar, Trash2, Sparkles } from 'lucide-react'
+import { X, Calendar, Trash2, Sparkles, AlertTriangle } from 'lucide-react'
 
 /* ══════════���════════════════════════════════════════
    SHARED HELPERS
@@ -201,6 +201,39 @@ export default function ChamCongPage() {
     return m
   }, [overtimeEntries, month])
 
+  /* ══════════════ SHARED: error state cho 3 modal (cell edit) ══════════════ */
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  /**
+   * Format lỗi từ server response để hiện trong modal.
+   * Hook upsert ném Error(res.text()) là JSON string, cần parse trước.
+   * Ưu tiên bắt case "bảng lương đã khoá" (HTTP 409 từ chamcong-guard) và
+   * enrich với tên NV + tháng để user hiểu ngay.
+   */
+  function formatSaveError(e: any, empName: string, date: string): string {
+    // e.message là JSON string từ res.text() — parse để lấy .error
+    let raw = e?.message ?? 'Không rõ lỗi'
+    try {
+      const parsed = JSON.parse(raw)
+      if (typeof parsed?.error === 'string') raw = parsed.error
+    } catch {
+      // không phải JSON, giữ nguyên raw
+    }
+
+    const monthOfDate = date.slice(0, 7) // YYYY-MM
+    const mm = monthOfDate.slice(5)
+    const yy = monthOfDate.slice(0, 4)
+
+    // chamcong-guard message: "Không thể sửa — bảng lương tháng này đang ở trạng thái "..."
+    if (typeof raw === 'string' && raw.includes('bảng lương')) {
+      const match = raw.match(/"([^"]+)"/)
+      const status = match?.[1] ?? ''
+      return `Không thể chỉnh sửa — bảng lương tháng ${mm}/${yy} của ${empName} đang ở trạng thái "${status}". Bạn không thể sửa công số, tăng ca hay KPI của nhân viên này cho tháng này nữa.`
+    }
+
+    return `Không thể lưu — ${raw}`
+  }
+
   /* ══════════════ TABLE 1: CÔNG SỐ ══════════════ */
   type AttEdit = { empId: string; empName: string; date: string }
   const [attEdit, setAttEdit] = useState<AttEdit | null>(null)
@@ -214,11 +247,13 @@ export default function ChamCongPage() {
     const existing = attMap[`${empId}|${date}`]
     setAttVal(existing?.units ?? 1.0)
     setAttNote(existing?.note ?? '')
+    setSaveError(null)
     setAttEdit({ empId, empName, date })
   }
   async function saveAtt() {
     if (!attEdit) return
     setSaving(true)
+    setSaveError(null)
     try {
       await upsertWorkUnit({
         employeeId: attEdit.empId,
@@ -227,11 +262,12 @@ export default function ChamCongPage() {
         note: attNote.trim() || undefined,
       })
       await mutateWU()
-    } catch (e) {
-      console.error('saveAtt error:', e)
+      setAttEdit(null)
+    } catch (e: any) {
+      setSaveError(formatSaveError(e, attEdit.empName, attEdit.date))
+      // Giữ modal mở để user đọc message + đóng thủ công
     } finally {
       setSaving(false)
-      setAttEdit(null)
     }
   }
 
@@ -295,19 +331,21 @@ export default function ChamCongPage() {
     const existing = otMap[`${empId}|${date}`]
     setOtHours(existing?.hours ?? 0)
     setOtNote(existing?.note ?? '')
+    setSaveError(null)
     setOtEdit({ empId, empName, date })
   }
   async function saveOt() {
     if (!otEdit) return
     setOtSaving(true)
+    setSaveError(null)
     try {
       await upsertOvertimeEntry({ employeeId: otEdit.empId, date: otEdit.date, hours: otHours, note: otNote })
       await mutateOT()
-    } catch (e) {
-      console.error('saveOt error:', e)
+      setOtEdit(null)
+    } catch (e: any) {
+      setSaveError(formatSaveError(e, otEdit.empName, otEdit.date))
     } finally {
       setOtSaving(false)
-      setOtEdit(null)
     }
   }
 
@@ -322,6 +360,7 @@ export default function ChamCongPage() {
     const existing = kpiMap[`${empId}|${date}`]
     setKpiSelected(existing?.types ?? [])
     setKpiNote(existing?.note ?? '')
+    setSaveError(null)
     setKpiEdit({ empId, empName, date })
   }
   function toggleKpiType(t: KpiViolationType) {
@@ -329,13 +368,13 @@ export default function ChamCongPage() {
   }
   async function saveKpi() {
     if (!kpiEdit) return
+    setSaveError(null)
     try {
       await upsertKpiViolation({ employeeId: kpiEdit.empId, date: kpiEdit.date, types: kpiSelected, note: kpiNote })
       await mutateKpi()
-    } catch (e) {
-      console.error('saveKpi error:', e)
-    } finally {
       setKpiEdit(null)
+    } catch (e: any) {
+      setSaveError(formatSaveError(e, kpiEdit.empName, kpiEdit.date))
     }
   }
 
@@ -771,8 +810,14 @@ export default function ChamCongPage() {
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 mb-4 resize-none"
               maxLength={200}
             />
+            {saveError && (
+              <div className="mb-3 flex items-start gap-2 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-[11px]">
+                <AlertTriangle size={13} className="shrink-0 mt-0.5"/>
+                <span className="leading-relaxed">{saveError}</span>
+              </div>
+            )}
             <div className="flex gap-2">
-              <button onClick={() => setAttEdit(null)} className="flex-1 py-2 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">Hủy</button>
+              <button onClick={() => { setAttEdit(null); setSaveError(null) }} className="flex-1 py-2 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">Đóng</button>
               <button onClick={saveAtt} disabled={saving} className="flex-1 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60">
                 {saving ? 'Đang lưu...' : 'Lưu'}
               </button>
@@ -817,8 +862,14 @@ export default function ChamCongPage() {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
             </div>
 
+            {saveError && (
+              <div className="mb-3 flex items-start gap-2 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-[11px]">
+                <AlertTriangle size={13} className="shrink-0 mt-0.5"/>
+                <span className="leading-relaxed">{saveError}</span>
+              </div>
+            )}
             <div className="flex gap-2">
-              <button onClick={() => setOtEdit(null)} className="flex-1 py-2 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">Hủy</button>
+              <button onClick={() => { setOtEdit(null); setSaveError(null) }} className="flex-1 py-2 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">Đóng</button>
               <button onClick={saveOt} disabled={otSaving}
                 className="flex-1 py-2 text-xs font-semibold bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-60">
                 {otSaving ? 'Đang lưu...' : 'Lưu'}
@@ -857,8 +908,14 @@ export default function ChamCongPage() {
             <label className="block text-[11px] font-medium text-gray-500 mb-1.5">Ghi chú</label>
             <input type="text" value={kpiNote} onChange={e => setKpiNote(e.target.value)} placeholder="Ghi chú vi phạm..."
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500/20 mb-4" />
+            {saveError && (
+              <div className="mb-3 flex items-start gap-2 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-[11px]">
+                <AlertTriangle size={13} className="shrink-0 mt-0.5"/>
+                <span className="leading-relaxed">{saveError}</span>
+              </div>
+            )}
             <div className="flex gap-2">
-              <button onClick={() => setKpiEdit(null)} className="flex-1 py-2 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">Hủy</button>
+              <button onClick={() => { setKpiEdit(null); setSaveError(null) }} className="flex-1 py-2 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">Đóng</button>
               <button onClick={saveKpi} className="flex-1 py-2 text-xs font-semibold bg-rose-600 text-white rounded-lg hover:bg-rose-700">Lưu</button>
             </div>
           </div>
