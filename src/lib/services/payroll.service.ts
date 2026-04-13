@@ -285,11 +285,10 @@ export async function calculatePayroll(
   }
 
   // Phase 05: manual input values — prefer new keys, fall back to legacy aliases
-  const phuCap        = svMap["phu_cap"]         ?? svMap["tien_phu_cap"]    ?? 0
+  const phuCap        = svMap["tien_phu_cap"]    ?? svMap["phu_cap"]          ?? 0
   const thuong        = svMap["thuong"]           ?? 0
-  const phat          = svMap["phat"]             ?? svMap["tien_phat"]       ?? 0
+  const phat          = svMap["tien_tru_khac"]   ?? svMap["phat"]             ?? svMap["tien_phat"]       ?? 0
   const kpiChuyenCan  = svMap["kpi_chuyen_can"]  ?? 0
-  const kpiTrachNhiem = svMap["kpi_trach_nhiem"] ?? 0
 
   // Phase 05: manual input keys are injected as both old and new names for formula compatibility
   const tienPhuCap = phuCap
@@ -309,11 +308,11 @@ export async function calculatePayroll(
     phu_cap:           phuCap,
     thuong:            thuong,
     phat:              phat,
+    tien_tru_khac:     phat,            // canonical name for the deduction column
     // Legacy keys for formula backward compat
     tien_phu_cap:      tienPhuCap,
     tien_phat:         tienPhat,
     kpi_chuyen_can:    kpiChuyenCan,
-    kpi_trach_nhiem:   kpiTrachNhiem,
   }
 
   // ── Phase 01: evaluate formula columns in topological order ──
@@ -376,8 +375,8 @@ export async function calculatePayroll(
   const mealPay     = vars["tien_an"]             ?? Math.round(netWorkUnits * 35_000)
 
   // ── Tổng phụ cấp & khấu trừ ──────────────────────────────────
-  // KPI chuyên cần + KPI trách nhiệm là tiền thưởng (dương), không phải khấu trừ
-  const totalBonus      = responsibilitySalary + mealPay + tienPhuCap + thuong + kpiChuyenCan + kpiTrachNhiem
+  // KPI chuyên cần là tiền thưởng (dương), không phải khấu trừ
+  const totalBonus      = responsibilitySalary + mealPay + tienPhuCap + thuong + kpiChuyenCan
   const totalDeductions = tienPhat
 
   // ── Lương gộp ─────────────────────────────────────────────────
@@ -590,9 +589,8 @@ export async function buildPayrollSnapshot(
 
   const phuCap        = svMap["phu_cap"]         ?? svMap["tien_phu_cap"]   ?? 0
   const thuong        = svMap["thuong"]           ?? 0
-  const phat          = svMap["phat"]             ?? svMap["tien_phat"]      ?? 0
+  const phat          = svMap["tien_tru_khac"]   ?? svMap["phat"]            ?? svMap["tien_phat"]      ?? 0
   const kpiChuyenCan  = svMap["kpi_chuyen_can"]  ?? 0
-  const kpiTrachNhiem = svMap["kpi_trach_nhiem"] ?? 0
 
   const congSoNhan  = workUnits.reduce((s: number, w: any) => s + toNum(w.units), 0)
   const congSoTru   = deductions.reduce((s: number, d: any) => s + toNum(d.delta), 0)
@@ -610,10 +608,10 @@ export async function buildPayrollSnapshot(
     phu_cap:           phuCap,
     thuong:            thuong,
     phat:              phat,
+    tien_tru_khac:     phat,
     tien_phu_cap:      phuCap,
     tien_phat:         phat,
     kpi_chuyen_can:    kpiChuyenCan,
-    kpi_trach_nhiem:   kpiTrachNhiem,
   }
 
   // Evaluate formulas in topological order

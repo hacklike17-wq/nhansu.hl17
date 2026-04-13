@@ -25,9 +25,7 @@ export const COL_FIELD: Record<string, string> = {
   kpi_chuyen_can:    'kpiChuyenCan',
   tien_an:           'mealPay',
   tien_phu_cap:      'tienPhuCap',
-  phu_cap:           'tienPhuCap',
-  phat:              'tienPhat',
-  tien_phat:         'tienPhat',
+  tien_tru_khac:     'tienPhat',
   tong_thuc_nhan:    'netSalary',
 }
 
@@ -36,13 +34,10 @@ export const COL_FIELD: Record<string, string> = {
  * Maps SalaryColumn.key → the SalaryValue columnKey to save.
  */
 export const MANUAL_INPUT_MAP: Record<string, string> = {
-  phu_cap:        'phu_cap',
-  tien_phu_cap:   'phu_cap',   // legacy alias → save as phu_cap
+  tien_phu_cap:   'tien_phu_cap',
   thuong:         'thuong',
-  phat:           'phat',
-  tien_phat:      'phat',      // legacy alias → save as phat
+  tien_tru_khac:  'tien_tru_khac',
   kpi_chuyen_can: 'kpi_chuyen_can',
-  kpi_trach_nhiem:'kpi_trach_nhiem',
 }
 
 /** Column display style by key */

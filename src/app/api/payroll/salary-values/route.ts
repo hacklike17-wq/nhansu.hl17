@@ -9,13 +9,7 @@ import { requirePermission, errorResponse } from "@/lib/permission"
  * regardless of DB column config (backward compat for MANUAL_INPUT_MAP aliases).
  */
 const LEGACY_CANONICAL_KEYS = new Set([
-  "phu_cap",
   "thuong",
-  "phat",
-  "kpi_chuyen_can",
-  "kpi_trach_nhiem",
-  "tien_phu_cap",  // legacy alias
-  "tien_phat",     // legacy alias
 ])
 
 const SaveManualInputSchema = z.object({
