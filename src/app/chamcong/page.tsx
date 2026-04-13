@@ -246,30 +246,38 @@ export default function ChamCongPage() {
     }
   }
 
-  /* ══════════════ TASK 1: INIT MONTH — default work_count=1 per workday ══════════════ */
+  /* ══════════════ AUTO-FILL — chấm tự động đến hôm nay (Mon-Sat) ══════════════ */
   async function handleInitMonth() {
     if (!isManager || initializing) return
     setInitializing(true)
     setInitMsg(null)
     try {
-      const res = await fetch('/api/work-units/init-month', {
+      const res = await fetch('/api/work-units/auto-fill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data?.error ?? 'Không thể khởi tạo')
+      if (!res.ok) throw new Error(data?.error ?? 'Không thể cập nhật')
       await mutateWU()
-      setInitMsg(
-        data.created > 0
-          ? `Đã tạo ${data.created} ngày công mặc định`
-          : 'Tất cả ngày công đã được khởi tạo'
-      )
+
+      const created = data.created ?? 0
+      const leaveZeroes = data.createdLeaveZeroes ?? 0
+      const skipped = data.skippedExisting ?? 0
+
+      if (created === 0 && leaveZeroes === 0) {
+        setInitMsg(`Đã đồng bộ — ${skipped} ngày đã có sẵn`)
+      } else {
+        const parts: string[] = []
+        if (created > 0) parts.push(`+${created} ngày công`)
+        if (leaveZeroes > 0) parts.push(`+${leaveZeroes} ngày nghỉ KL`)
+        if (skipped > 0) parts.push(`giữ ${skipped} ô đã có`)
+        setInitMsg(`Đã cập nhật: ${parts.join(' · ')}`)
+      }
     } catch (e: any) {
       setInitMsg(`Lỗi: ${e.message}`)
     } finally {
       setInitializing(false)
-      setTimeout(() => setInitMsg(null), 4000)
+      setTimeout(() => setInitMsg(null), 5000)
     }
   }
 
@@ -382,10 +390,10 @@ export default function ChamCongPage() {
             onClick={handleInitMonth}
             disabled={initializing}
             className="inline-flex items-center gap-1.5 px-3 h-8 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-60"
-            title="Tạo công số mặc định (1 công/ngày) cho tất cả nhân viên trong các ngày làm việc của tháng"
+            title="Tự động chấm 1 công/ngày từ đầu tháng đến hôm nay (Mon-Sat). Bỏ qua Chủ nhật và ngày nghỉ không lương đã duyệt. Không ghi đè các ô đã chỉnh."
           >
             <Sparkles size={13}/>
-            {initializing ? 'Đang khởi tạo...' : 'Khởi tạo công số'}
+            {initializing ? 'Đang cập nhật...' : 'Cập nhật công đến hôm nay'}
           </button>
         )}
         {initMsg && (
