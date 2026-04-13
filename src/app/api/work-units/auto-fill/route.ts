@@ -4,53 +4,98 @@ import { requirePermission, errorResponse } from "@/lib/permission"
 
 /**
  * POST /api/work-units/auto-fill
+ * Body: { month?: "YYYY-MM" }  (optional — defaults to current UTC+7 month)
  *
- * Auto-fill attendance from the 1st of the current month up to TODAY (UTC+7),
- * respecting the company's actual schedule.
+ * Auto-fill attendance for the specified month, respecting the company's
+ * actual schedule.
  *
- * Rules (all chốt theo brainstorm):
+ * Rules (chốt theo brainstorm):
  *  1. Tuần làm 6 ngày: Mon–Sat. Chủ nhật bỏ qua.
- *  2. Phạm vi: từ MAX(startDate, ngày 1 tháng) tới MIN(endDate ?? today, today).
- *     → Không tạo cho ngày NV chưa vào hoặc đã nghỉ việc.
- *  3. Ngày tương lai (> today): KHÔNG tạo. KHÔNG cleanup rows tương lai cũ
- *     (manager tự dùng nút "Xoá tháng" hiện có nếu cần dọn).
- *  4. Ngày NV có UNPAID LeaveRequest APPROVED cover → tạo row units=0
- *     với note "Nghỉ không lương — đơn #..." (cell hiện 0 đỏ, có audit trail).
- *  5. Idempotent: nếu row đã tồn tại (manager hoặc lần auto-fill trước đã
- *     tạo), KHÔNG ghi đè — giữ nguyên giá trị + note.
+ *  2. Phạm vi ngày: [monthStart, min(monthEnd, today)]
+ *     - Tháng hiện tại: 1 → hôm nay
+ *     - Tháng quá khứ:  1 → ngày cuối tháng đó
+ *     - Tháng tương lai: reject 400
+ *  3. Phạm vi NV: từ MAX(startDate, monthStart) tới MIN(endDate ?? cutoff, cutoff).
+ *  4. Ngày NV có UNPAID LeaveRequest APPROVED cover → tạo row units=0 + note
+ *  5. Idempotent: rows tồn tại (manager sửa hoặc auto-fill trước) → giữ nguyên
+ *  6. KHÔNG cleanup rows tương lai
  *
  * Salary calculation logic is NOT touched. Schema is NOT changed.
  */
-export async function POST(_req: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
     const ctx = await requirePermission("chamcong.edit")
     if (!ctx.companyId) return NextResponse.json({ error: "No company context" }, { status: 400 })
     const companyId = ctx.companyId
 
-    // ── Vietnam-time "today" ──────────────────────────────────────
+    // ── Parse body (optional month) ───────────────────────────────
+    let bodyMonth: string | undefined
+    try {
+      const raw = await req.text()
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (typeof parsed?.month === "string") bodyMonth = parsed.month
+      }
+    } catch {
+      // Empty body or malformed JSON → fall through to current month default
+    }
+
+    // ── Vietnam-time "today" (cutoff for cận trên) ────────────────
     const VN_OFFSET_MS = 7 * 60 * 60 * 1000
     const nowVN = new Date(Date.now() + VN_OFFSET_MS)
-    const y = nowVN.getUTCFullYear()
-    const m = nowVN.getUTCMonth()
-    const d = nowVN.getUTCDate()
-    const todayUTC = new Date(Date.UTC(y, m, d))
-    const monthStart = new Date(Date.UTC(y, m, 1))
+    const todayY = nowVN.getUTCFullYear()
+    const todayM = nowVN.getUTCMonth()
+    const todayD = nowVN.getUTCDate()
+    const todayUTC = new Date(Date.UTC(todayY, todayM, todayD))
 
-    // Tuần làm 6 ngày: build danh sách Mon-Sat từ ngày 1 → today
+    // ── Resolve target month (default = current) ─────────────────
+    let targetY: number
+    let targetM: number  // 0-indexed
+    if (bodyMonth) {
+      if (!/^\d{4}-\d{2}$/.test(bodyMonth)) {
+        return NextResponse.json({ error: "month phải ở định dạng YYYY-MM" }, { status: 400 })
+      }
+      const [yy, mm] = bodyMonth.split("-").map(Number)
+      targetY = yy
+      targetM = mm - 1
+    } else {
+      targetY = todayY
+      targetM = todayM
+    }
+
+    const monthStart = new Date(Date.UTC(targetY, targetM, 1))
+    const monthLastDay = new Date(Date.UTC(targetY, targetM + 1, 0))
+
+    // Reject if the entire target month is in the future (monthStart > today)
+    if (monthStart > todayUTC) {
+      return NextResponse.json(
+        { error: "Không thể chấm công cho tháng tương lai" },
+        { status: 400 }
+      )
+    }
+
+    // Cutoff: if target month is current month → today, else → end of month
+    const cutoff = monthLastDay < todayUTC ? monthLastDay : todayUTC
+
+    // Tuần làm 6 ngày: build danh sách Mon-Sat từ ngày 1 → cutoff
     const monthWorkdays: Date[] = []
-    for (let day = 1; day <= d; day++) {
-      const dayDate = new Date(Date.UTC(y, m, day))
+    const cutoffDay = cutoff.getUTCDate()
+    for (let day = 1; day <= cutoffDay; day++) {
+      const dayDate = new Date(Date.UTC(targetY, targetM, day))
       if (dayDate.getUTCDay() !== 0) monthWorkdays.push(dayDate)
     }
+
+    const monthLabel = `${String(targetM + 1).padStart(2, "0")}/${targetY}`
 
     if (monthWorkdays.length === 0) {
       return NextResponse.json({
         ok: true,
-        today: `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`,
+        month: `${targetY}-${String(targetM + 1).padStart(2, "0")}`,
+        monthLabel,
         created: 0,
         skippedExisting: 0,
         skippedLeave: 0,
-        message: "Chưa có ngày làm việc nào trong tháng",
+        message: "Chưa có ngày làm việc nào",
       })
     }
 
@@ -68,7 +113,8 @@ export async function POST(_req: NextRequest) {
     if (employees.length === 0) {
       return NextResponse.json({
         ok: true,
-        today: `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`,
+        month: `${targetY}-${String(targetM + 1).padStart(2, "0")}`,
+        monthLabel,
         created: 0,
         skippedExisting: 0,
         skippedLeave: 0,
@@ -82,7 +128,7 @@ export async function POST(_req: NextRequest) {
       where: {
         companyId,
         employeeId: { in: employeeIds },
-        date: { gte: monthStart, lte: todayUTC },
+        date: { gte: monthStart, lte: cutoff },
       },
       select: { employeeId: true, date: true },
     })
@@ -90,27 +136,27 @@ export async function POST(_req: NextRequest) {
       existing.map(w => `${w.employeeId}::${(w.date as Date).toISOString().slice(0, 10)}`)
     )
 
-    // ── UNPAID leave requests covering any day in [monthStart, todayUTC] ──
+    // ── UNPAID leave requests covering any day in [monthStart, cutoff] ──
     const unpaidLeaves = await db.leaveRequest.findMany({
       where: {
         companyId,
         employeeId: { in: employeeIds },
         type: "UNPAID",
         status: "APPROVED",
-        // Overlaps our range: leave.endDate >= monthStart AND leave.startDate <= todayUTC
+        // Overlap: leave.endDate >= monthStart AND leave.startDate <= cutoff
         endDate: { gte: monthStart },
-        startDate: { lte: todayUTC },
+        startDate: { lte: cutoff },
       },
       select: { id: true, employeeId: true, startDate: true, endDate: true },
     })
 
-    // Build per-employee map: dateString → leave id (the leave covering that date)
-    const leaveByEmpDate = new Map<string, string>() // key: empId::YYYY-MM-DD → leaveId
+    // Build per-employee map: dateString → leave id
+    const leaveByEmpDate = new Map<string, string>()
     for (const lv of unpaidLeaves) {
       const start = lv.startDate as Date
       const end = lv.endDate as Date
       const cursor = new Date(Math.max(start.getTime(), monthStart.getTime()))
-      const stop = new Date(Math.min(end.getTime(), todayUTC.getTime()))
+      const stop = new Date(Math.min(end.getTime(), cutoff.getTime()))
       while (cursor <= stop) {
         const key = `${lv.employeeId}::${cursor.toISOString().slice(0, 10)}`
         leaveByEmpDate.set(key, lv.id)
@@ -132,12 +178,12 @@ export async function POST(_req: NextRequest) {
 
     for (const emp of employees) {
       const empStart = emp.startDate as Date
-      // Cận trên = min(endDate, today). Nếu endDate < monthStart → skip toàn bộ.
-      const empEnd = (emp.endDate as Date | null) ?? todayUTC
+      // Cận trên = min(endDate, cutoff). Nếu endDate < monthStart → skip.
+      const empEnd = (emp.endDate as Date | null) ?? cutoff
       if (empEnd < monthStart) continue
 
       for (const day of monthWorkdays) {
-        // Phạm vi NV: chỉ tạo trong [empStart, min(empEnd, today)]
+        // Phạm vi NV: chỉ tạo trong [empStart, empEnd] (đã cap bởi cutoff)
         if (day < empStart) continue
         if (day > empEnd) continue
 
@@ -187,17 +233,21 @@ export async function POST(_req: NextRequest) {
     // "default" creation count to report the breakdown clearly.
     const createdDefault = createdCount - skippedLeave
 
+    const monthKey = `${targetY}-${String(targetM + 1).padStart(2, "0")}`
+
     // Audit: 1 row per auto-fill batch (summary, not per cell)
     if (createdCount > 0) {
       db.auditLog.create({
         data: {
           companyId,
           entityType: "WorkUnit",
-          entityId: "AUTO_FILL", // not a real id — group key for batch ops
+          entityId: "AUTO_FILL",
           action: "AUTO_FILL",
           changedBy: ctx.userId,
           changes: {
-            today: `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`,
+            month: monthKey,
+            monthLabel,
+            cutoff: cutoff.toISOString().slice(0, 10),
             employees: employees.length,
             workdaysProcessed: monthWorkdays.length,
             created: createdDefault,
@@ -211,7 +261,9 @@ export async function POST(_req: NextRequest) {
     return NextResponse.json(
       {
         ok: true,
-        today: `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`,
+        month: monthKey,
+        monthLabel,
+        cutoff: cutoff.toISOString().slice(0, 10),
         employees: employees.length,
         workdaysProcessed: monthWorkdays.length,
         created: createdDefault,

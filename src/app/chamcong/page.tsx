@@ -255,23 +255,25 @@ export default function ChamCongPage() {
       const res = await fetch('/api/work-units/auto-fill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? 'Không thể cập nhật')
       await mutateWU()
 
+      const monthLabel = data.monthLabel ?? month
       const created = data.created ?? 0
       const leaveZeroes = data.createdLeaveZeroes ?? 0
       const skipped = data.skippedExisting ?? 0
 
       if (created === 0 && leaveZeroes === 0) {
-        setInitMsg(`Đã đồng bộ — ${skipped} ngày đã có sẵn`)
+        setInitMsg(`Tháng ${monthLabel}: đã đồng bộ — ${skipped} ngày đã có sẵn`)
       } else {
         const parts: string[] = []
         if (created > 0) parts.push(`+${created} ngày công`)
         if (leaveZeroes > 0) parts.push(`+${leaveZeroes} ngày nghỉ KL`)
         if (skipped > 0) parts.push(`giữ ${skipped} ô đã có`)
-        setInitMsg(`Đã cập nhật: ${parts.join(' · ')}`)
+        setInitMsg(`Tháng ${monthLabel}: ${parts.join(' · ')}`)
       }
     } catch (e: any) {
       setInitMsg(`Lỗi: ${e.message}`)
@@ -423,17 +425,35 @@ export default function ChamCongPage() {
           <input type="month" value={month} onChange={e => setMonth(e.target.value)}
             className="border border-gray-200 rounded-lg px-2.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 h-8" />
         </div>
-        {isManager && (
-          <button
-            onClick={handleInitMonth}
-            disabled={initializing}
-            className="inline-flex items-center gap-1.5 px-3 h-8 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-60"
-            title="Tự động chấm 1 công/ngày từ đầu tháng đến hôm nay (Mon-Sat). Bỏ qua Chủ nhật và ngày nghỉ không lương đã duyệt. Không ghi đè các ô đã chỉnh."
-          >
-            <Sparkles size={13}/>
-            {initializing ? 'Đang cập nhật...' : 'Cập nhật công đến hôm nay'}
-          </button>
-        )}
+        {isManager && (() => {
+          // Classify the selected month vs today (local) for context-aware UI
+          const todayYm = new Date().toISOString().slice(0, 7) // "YYYY-MM"
+          const isFuture = month > todayYm
+          const isPast = month < todayYm
+          const label = initializing
+            ? 'Đang cập nhật...'
+            : isFuture
+              ? 'Tháng tương lai'
+              : isPast
+                ? 'Khởi tạo công cho tháng này'
+                : 'Cập nhật công đến hôm nay'
+          const tooltip = isFuture
+            ? 'Không thể chấm công cho tháng tương lai'
+            : isPast
+              ? 'Tạo 1 công/ngày cho toàn bộ ngày làm việc (Mon-Sat) của tháng đã chọn. Bỏ qua Chủ nhật và ngày nghỉ không lương đã duyệt.'
+              : 'Tự động chấm 1 công/ngày từ đầu tháng đến hôm nay (Mon-Sat). Bỏ qua Chủ nhật và ngày nghỉ không lương đã duyệt. Không ghi đè ô đã chỉnh.'
+          return (
+            <button
+              onClick={handleInitMonth}
+              disabled={initializing || isFuture}
+              className="inline-flex items-center gap-1.5 px-3 h-8 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-60 disabled:cursor-not-allowed"
+              title={tooltip}
+            >
+              <Sparkles size={13}/>
+              {label}
+            </button>
+          )
+        })()}
         {initMsg && (
           <span className={`text-[11px] font-medium ${initMsg.startsWith('Lỗi') ? 'text-red-500' : 'text-green-600'}`}>
             {initMsg}
