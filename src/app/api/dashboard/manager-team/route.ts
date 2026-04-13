@@ -27,15 +27,18 @@ export async function GET(_req: NextRequest) {
     const m = nowVN.getUTCMonth()
     const d = nowVN.getUTCDate()
     const dow = nowVN.getUTCDay()
-    const isWeekend = dow === 0 || dow === 6
+    // Tuần làm 6 ngày: Mon–Sat. Chỉ Chủ nhật là cuối tuần.
+    const isWeekend = dow === 0
     const todayUTC = new Date(Date.UTC(y, m, d))
     const monthStart = new Date(Date.UTC(y, m, 1))
     const monthEndDay = new Date(Date.UTC(y, m + 1, 0))
 
-    let workdaysSoFar = 0
-    for (let day = 1; day <= d; day++) {
+    // Total workdays of the entire month (Mon–Sat). Used as the denominator
+    // for "Công tháng" so that 23/26 reads naturally instead of 23/9.
+    let workdaysInMonth = 0
+    for (let day = 1; day <= monthEndDay.getUTCDate(); day++) {
       const dd = new Date(Date.UTC(y, m, day)).getUTCDay()
-      if (dd !== 0 && dd !== 6) workdaysSoFar++
+      if (dd !== 0) workdaysInMonth++
     }
 
     const employees = await db.employee.findMany({
@@ -60,7 +63,7 @@ export async function GET(_req: NextRequest) {
         {
           month: `${y}-${String(m + 1).padStart(2, "0")}`,
           isWeekend,
-          workdaysSoFar,
+          workdaysInMonth,
           team: [],
         },
         { headers: { "Cache-Control": "no-store" } }
@@ -153,7 +156,7 @@ export async function GET(_req: NextRequest) {
         department: e.department,
         todayStatus,
         monthWorkUnits: monthWorkUnitsMap.get(e.id) ?? 0,
-        monthWorkdaysExpected: workdaysSoFar,
+        monthWorkdaysExpected: workdaysInMonth,
         kpiViolationCount: kpiCountMap.get(e.id) ?? 0,
         payrollStatus: payrollMap.get(e.id) ?? null,
       }
@@ -163,7 +166,7 @@ export async function GET(_req: NextRequest) {
       {
         month: `${y}-${String(m + 1).padStart(2, "0")}`,
         isWeekend,
-        workdaysSoFar,
+        workdaysInMonth,
         team,
       },
       { headers: { "Cache-Control": "no-store" } }

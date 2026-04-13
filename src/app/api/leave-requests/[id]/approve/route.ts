@@ -63,7 +63,8 @@ export async function POST(
       const cursor = new Date(start)
       while (cursor <= end) {
         const dow = cursor.getUTCDay()
-        if (dow !== 0 && dow !== 6) {
+        // Tuần làm 6 ngày: Mon-Sat. Chỉ Chủ nhật (dow=0) bị skip.
+        if (dow !== 0) {
           const day = new Date(cursor)
           workdayDates.push(day)
           events.push({
@@ -167,7 +168,8 @@ export async function POST(
       const cursor = new Date(start)
       while (cursor <= end) {
         const dow = cursor.getUTCDay()
-        if (dow !== 0 && dow !== 6) workdayDates.push(new Date(cursor))
+        // Tuần làm 6 ngày: Mon-Sat. Chỉ Chủ nhật (dow=0) bị skip.
+        if (dow !== 0) workdayDates.push(new Date(cursor))
         cursor.setUTCDate(cursor.getUTCDate() + 1)
       }
       if (workdayDates.length > 0) {

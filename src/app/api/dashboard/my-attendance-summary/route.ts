@@ -49,10 +49,11 @@ export async function GET(req: NextRequest) {
       year === now.getUTCFullYear() && monthNum === now.getUTCMonth() + 1
     const cutoffDay = isCurrentMonth ? now.getUTCDate() : monthEnd.getUTCDate()
 
+    // Tuần làm 6 ngày: Mon–Sat. Chỉ Chủ nhật (dow=0) bị skip.
     let daysExpectedSoFar = 0
     for (let d = 1; d <= cutoffDay; d++) {
       const dow = new Date(Date.UTC(year, monthNum - 1, d)).getUTCDay()
-      if (dow !== 0 && dow !== 6) daysExpectedSoFar++
+      if (dow !== 0) daysExpectedSoFar++
     }
 
     const [workAgg, otAgg, payroll, unpaidLeaves] = await Promise.all([

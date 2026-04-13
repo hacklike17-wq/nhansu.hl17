@@ -20,7 +20,7 @@ type TeamRow = {
 type ApiResponse = {
   month: string
   isWeekend: boolean
-  workdaysSoFar: number
+  workdaysInMonth: number
   team: TeamRow[]
 }
 

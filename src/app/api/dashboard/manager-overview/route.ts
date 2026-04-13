@@ -24,29 +24,27 @@ export async function GET(_req: NextRequest) {
     const m = nowVN.getUTCMonth()
     const d = nowVN.getUTCDate()
     const dow = nowVN.getUTCDay()
-    const isWeekend = dow === 0 || dow === 6
-    // Date stored in DB is @db.Date (midnight UTC) — match by constructing UTC midnight
+    // Tuần làm 6 ngày: Mon–Sat. Chỉ Chủ nhật (dow=0) là cuối tuần.
+    const isWeekend = dow === 0
     const todayUTC = new Date(Date.UTC(y, m, d))
     const monthStart = new Date(Date.UTC(y, m, 1))
     const monthEndDay = new Date(Date.UTC(y, m + 1, 0))
 
-    // Workdays of the month so far (UTC+7 perspective): Mon–Fri from day 1 → today
+    // Workdays so far this month (Mon–Sat, day 1 → today)
     let workdaysSoFar = 0
     for (let day = 1; day <= d; day++) {
       const dd = new Date(Date.UTC(y, m, day)).getUTCDay()
-      if (dd !== 0 && dd !== 6) workdaysSoFar++
+      if (dd !== 0) workdaysSoFar++
     }
 
-    // Total workdays in the entire month — used as denominator for the
-    // "coverage" progress bar so 100% = full month is filled in.
+    // Total workdays in the entire month — denominator for the coverage bar.
     let workdaysInMonth = 0
     for (let day = 1; day <= monthEndDay.getUTCDate(); day++) {
       const dd = new Date(Date.UTC(y, m, day)).getUTCDay()
-      if (dd !== 0 && dd !== 6) workdaysInMonth++
+      if (dd !== 0) workdaysInMonth++
     }
 
-    // Workdays of current week (Mon–today, Vietnam week starts Mon)
-    // Compute Monday of this week
+    // Workdays of current week (Mon → today). Vietnam week starts Monday.
     const dayOfWeekMon0 = (dow + 6) % 7 // Mon=0, Sun=6
     const mondayDate = d - dayOfWeekMon0
     const weekDays: Date[] = []
@@ -54,7 +52,7 @@ export async function GET(_req: NextRequest) {
       if (day < 1) continue
       const dd = new Date(Date.UTC(y, m, day))
       const ddDow = dd.getUTCDay()
-      if (ddDow !== 0 && ddDow !== 6) weekDays.push(dd)
+      if (ddDow !== 0) weekDays.push(dd)
     }
 
     // ── Active employees (excluding soft-deleted / NO_ACCOUNT) ────
