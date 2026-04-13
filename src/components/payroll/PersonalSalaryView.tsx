@@ -16,18 +16,14 @@ type PayrollRow = {
   overtimeHours: number | string
   overtimePay: number | string
   tienPhuCap: number | string
-  kpiBonus: number | string
   kpiChuyenCan: number | string
-  kpiTrachNhiem: number | string
   mealPay: number | string
-  bonus: number | string
   grossSalary: number | string
   bhxhEmployee: number | string
   bhytEmployee: number | string
   bhtnEmployee: number | string
   pitTax: number | string
   tienPhat: number | string
-  otherDeductions: number | string
   netSalary: number | string
   needsRecalc?: boolean
   note?: string | null
@@ -262,9 +258,6 @@ export default function PersonalSalaryView({
                 <LineRow label="Lương công thực tế" value={num(payroll.workSalary)} tone="muted"/>
                 <LineRow label="Tiền tăng ca"       value={num(payroll.overtimePay)} />
                 <LineRow label="KPI chuyên cần"     value={num(payroll.kpiChuyenCan)} />
-                <LineRow label="KPI trách nhiệm"    value={num(payroll.kpiTrachNhiem)} />
-                <LineRow label="Thưởng KPI"         value={num(payroll.kpiBonus)} />
-                <LineRow label="Thưởng khác"        value={num(payroll.bonus)} />
                 <LineRow label="Phụ cấp"            value={num(payroll.tienPhuCap)} />
                 <LineRow label="Tiền ăn"            value={num(payroll.mealPay)} />
               </div>
@@ -296,8 +289,7 @@ export default function PersonalSalaryView({
                   </>
                 )}
                 {showPitCol && <LineRow label="Thuế TNCN" value={num(payroll.pitTax)} tone="negative"/>}
-                <LineRow label="Phạt"          value={num(payroll.tienPhat)} tone="negative"/>
-                <LineRow label="Trừ khác"      value={num(payroll.otherDeductions)} tone="negative"/>
+                <LineRow label="Trừ khác"      value={num(payroll.tienPhat)} tone="negative"/>
               </div>
               <div className="px-5 py-3 bg-red-50/40 border-t border-gray-100 flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Tổng trừ</span>
@@ -307,8 +299,7 @@ export default function PersonalSalaryView({
                     num(payroll.bhytEmployee) +
                     num(payroll.bhtnEmployee) +
                     num(payroll.pitTax) +
-                    num(payroll.tienPhat) +
-                    num(payroll.otherDeductions)
+                    num(payroll.tienPhat)
                   )} ₫
                 </span>
               </div>

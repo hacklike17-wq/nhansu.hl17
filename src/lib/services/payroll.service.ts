@@ -107,20 +107,16 @@ export interface PayrollCalcResult {
   workSalary:          number            // lương công (baseSalary * netWorkUnits / 26)
   responsibilitySalary:number            // lương trách nhiệm
   overtimeHours:       number            // giờ tăng ca
-  kpiBonus:            number
   overtimePay:         number            // tiền tăng ca
   mealPay:             number            // tiền ăn
   tienPhuCap:          number            // tiền phụ cấp
   kpiChuyenCan:        number            // KPI chuyên cần
-  kpiTrachNhiem:       number            // KPI trách nhiệm
-  tienPhat:            number            // tiền phạt
-  bonus:               number            // responsibilitySalary + mealPay + tienPhuCap (aggregate)
+  tienPhat:            number            // tiền phạt / tiền trừ khác
   grossSalary:         number
   bhxhEmployee:        number
   bhytEmployee:        number
   bhtnEmployee:        number
   pitTax:              number
-  otherDeductions:     number            // tienPhat only (KPI columns are bonuses)
   netSalary:           number
   formulaErrors:       FormulaError[]    // Phase 01b: collected errors
   anomalies:           Anomaly[]         // Phase 09: detected anomalies
@@ -438,20 +434,16 @@ export async function calculatePayroll(
     workSalary,
     responsibilitySalary,
     overtimeHours,
-    kpiBonus:        0,
     overtimePay,
     mealPay,
     tienPhuCap,
     kpiChuyenCan,
-    kpiTrachNhiem,
     tienPhat,
-    bonus:           thuong,   // Phase 05: bonus field = thuong (manual input)
     grossSalary,
     bhxhEmployee,
     bhytEmployee,
     bhtnEmployee,
     pitTax,
-    otherDeductions: totalDeductions,
     netSalary,
     formulaErrors,
     anomalies,
