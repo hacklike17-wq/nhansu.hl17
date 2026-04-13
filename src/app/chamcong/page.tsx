@@ -384,24 +384,31 @@ export default function ChamCongPage() {
   type DrawerTab = 'data' | 'history'
   const [logTab, setLogTab] = useState<DrawerTab>('data')
 
-  // Audit log fetched on demand when drawer opens "history" tab
+  // Audit log fetched on demand when drawer opens "history" tab.
+  // NOTE: history tab shows COMPANY-WIDE changes for the selected month —
+  // clicking Log on any employee's row opens the same list. The drawer
+  // header still displays the clicked employee's name (for the "Dữ liệu"
+  // tab), but the history tab aggregates everyone's changes.
   type AuditEntry = {
     id: string
     entityType: string
     action: string
     changedBy: string | null
     changedByName: string | null
+    affectedEmployeeId: string | null
+    affectedEmployeeName: string | null
     changes: any
     createdAt: string
   }
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([])
   const [auditLoading, setAuditLoading] = useState(false)
 
-  // Fetch audit when switching to history tab
-  async function fetchAudit(empId: string) {
+  // Fetch audit when switching to history tab.
+  // Scope is month-wide (Alt A chosen by user): we do NOT pass employeeId.
+  async function fetchAudit() {
     setAuditLoading(true)
     try {
-      const url = `/api/chamcong/audit-log?employeeId=${empId}&month=${month}`
+      const url = `/api/chamcong/audit-log?month=${month}`
       const res = await fetch(url, { cache: 'no-store' })
       const data = await res.json()
       setAuditEntries(data.entries ?? [])
@@ -956,7 +963,9 @@ export default function ChamCongPage() {
                 <button
                   onClick={() => {
                     setLogTab('history')
-                    if (auditEntries.length === 0) fetchAudit(logState.empId)
+                    // Always fetch: the month picker may have changed since
+                    // the drawer was opened, so cached entries could be stale.
+                    fetchAudit()
                   }}
                   className={`px-3 py-2 text-[11px] font-semibold rounded-t-lg transition ${logTab === 'history' ? 'bg-white text-blue-700 border border-b-white border-gray-200' : 'text-gray-500 hover:text-gray-900'}`}
                 >
@@ -1007,6 +1016,9 @@ export default function ChamCongPage() {
 
               {logTab === 'history' && (
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+                <p className="text-[10px] text-gray-400 italic mb-1">
+                  Toàn bộ thay đổi công/tăng ca/KPI của công ty trong tháng {month}
+                </p>
                 {auditLoading ? (
                   <p className="text-center text-xs text-gray-400 py-8">Đang tải lịch sử...</p>
                 ) : auditEntries.length === 0 ? (
@@ -1051,6 +1063,11 @@ export default function ChamCongPage() {
                           </span>
                           <span className="text-[10px] text-gray-400">{when}</span>
                         </div>
+                        {e.affectedEmployeeName && (
+                          <div className="text-[10px] font-semibold text-gray-800 mb-0.5">
+                            👤 {e.affectedEmployeeName}
+                          </div>
+                        )}
                         <div className="text-[11px] text-gray-700">{summary}</div>
                         <div className="text-[10px] text-gray-400 mt-0.5">
                           Bởi: <span className="font-semibold">{e.changedByName ?? 'Hệ thống'}</span>

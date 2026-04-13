@@ -4,16 +4,28 @@ import { requirePermission, errorResponse } from "@/lib/permission"
 
 /**
  * GET /api/chamcong/audit-log
- *   ?employeeId=...      (optional)
- *   &month=YYYY-MM       (optional, default current)
+ *   ?employeeId=...      (optional; ignored for employee role — forced to self)
+ *   &month=YYYY-MM       (optional; filters by AFFECTED month, not createdAt)
  *   &entityType=WorkUnit | OvertimeEntry | KpiViolation | ALL  (default ALL)
  *
- * Returns the most recent 30 audit entries for chamcong-related changes.
- * Each entry includes the actor's display name (User.name) joined in.
+ * Returns audit entries for chamcong-related changes, enriched with actor
+ * display name AND (when available) the affected employee's name.
  *
- * Used by the chamcong page log drawer to show "ai thêm/xoá khi nào".
+ * Filter semantics (bug fix — phương án A: month-wide):
+ *   - The `month` param filters by the DATA MONTH that the audit row
+ *     affects, not by when the change was recorded. For per-cell mutations
+ *     (WorkUnit / OvertimeEntry / KpiViolation) this means
+ *     `changes.date.startsWith("YYYY-MM")`. For batch ops (AUTO_FILL,
+ *     BULK_DELETE) it means `changes.month === "YYYY-MM"`.
+ *   - Prisma doesn't support JSON `startsWith` cleanly across providers,
+ *     so we over-fetch 500 most-recent rows and filter in JS.
  *
- * Permission: chamcong.view (everyone with attendance view permission).
+ * Per user decision, the log drawer now shows ALL changes in the selected
+ * month across ALL employees (not scoped to the employee whose row was
+ * clicked). So when `employeeId` is absent, we skip the employee filter
+ * entirely — the result becomes "everything that happened in month X".
+ *
+ * Permission: chamcong.view. Employee role is still hard-scoped to self.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -26,7 +38,8 @@ export async function GET(req: NextRequest) {
     const monthParam = searchParams.get("month")
     const entityTypeParam = searchParams.get("entityType")
 
-    // Employees can only see their own audit
+    // Employees can ONLY see their own audit. Manager/admin may optionally
+    // pass employeeId; if absent, show all (company-wide month log).
     const employeeId = ctx.role === "employee" ? ctx.employeeId : employeeIdParam
 
     // Filter by entityType
@@ -40,36 +53,50 @@ export async function GET(req: NextRequest) {
       entityTypes = ["WorkUnit", "OvertimeEntry", "KpiViolation"]
     }
 
-    // Month range filter — applied to AuditLog.createdAt (when the change happened),
-    // NOT the affected date. This way "tháng 4" = changes made in April.
-    let dateFilter = {}
-    if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
-      const [y, m] = monthParam.split("-").map(Number)
-      const start = new Date(Date.UTC(y, m - 1, 1))
-      const end = new Date(Date.UTC(y, m, 0, 23, 59, 59, 999))
-      dateFilter = { createdAt: { gte: start, lte: end } }
-    }
+    // Validate month param (optional)
+    const monthMatches = monthParam && /^\d{4}-\d{2}$/.test(monthParam)
+      ? monthParam
+      : null
 
-    // We can't filter audit rows by employeeId directly (it's nested inside JSON
-    // changes). For employee-scoped queries, fetch a wider window then filter.
+    // Over-fetch to compensate for in-memory filtering. 500 covers a small
+    // company for many months. Raise if needed.
     const rawRows = await db.auditLog.findMany({
       where: {
         companyId,
         entityType: { in: entityTypes },
-        ...dateFilter,
       },
       orderBy: { createdAt: "desc" },
-      take: employeeId ? 200 : 30, // over-fetch when filtering by employee
+      take: 500,
     })
 
-    let rows = rawRows
-    if (employeeId) {
-      rows = rawRows.filter(r => {
-        const c = r.changes as any
-        return c?.employeeId === employeeId || r.entityId === employeeId
-      })
-      rows = rows.slice(0, 30)
-    }
+    // In-memory filter: month (by affected date) + employeeId (optional)
+    const filtered = rawRows.filter(r => {
+      const c = (r.changes as any) ?? {}
+
+      // Month filter — match affected data month, not createdAt
+      if (monthMatches) {
+        // Per-cell ops store `changes.date` = "YYYY-MM-DD"
+        // Batch ops (AUTO_FILL, BULK_DELETE) store `changes.month` = "YYYY-MM"
+        const affected: string | undefined = c.date ?? c.month
+        // Ops without a date-ish field fall through (rare — keep them so
+        // nothing is silently dropped)
+        if (typeof affected === "string") {
+          if (!affected.startsWith(monthMatches)) return false
+        }
+      }
+
+      // Employee filter (optional, skipped when caller didn't request it)
+      if (employeeId) {
+        const affectedEmp: string | undefined = c.employeeId
+        if (affectedEmp && affectedEmp !== employeeId) return false
+        // Fallback: entityId = employeeId for BULK_DELETE of an employee's month
+        if (!affectedEmp && r.entityId !== employeeId) return false
+      }
+
+      return true
+    })
+
+    const rows = filtered.slice(0, 30)
 
     // Resolve actor names
     const userIds = Array.from(new Set(rows.map(r => r.changedBy).filter(Boolean))) as string[]
@@ -79,20 +106,45 @@ export async function GET(req: NextRequest) {
           select: { id: true, name: true, email: true },
         })
       : []
-    const nameMap = new Map(users.map(u => [u.id, u.name ?? u.email ?? u.id]))
+    const userNameMap = new Map(users.map(u => [u.id, u.name ?? u.email ?? u.id]))
+
+    // Resolve affected employee names (for the month-wide view where
+    // entries come from different employees)
+    const affectedEmpIds = Array.from(
+      new Set(
+        rows
+          .map(r => (r.changes as any)?.employeeId ?? null)
+          .filter((v): v is string => typeof v === "string" && v.length > 0)
+      )
+    )
+    const affectedEmps = affectedEmpIds.length
+      ? await db.employee.findMany({
+          where: { id: { in: affectedEmpIds } },
+          select: { id: true, fullName: true },
+        })
+      : []
+    const empNameMap = new Map(affectedEmps.map(e => [e.id, e.fullName]))
 
     return NextResponse.json(
       {
-        entries: rows.map(r => ({
-          id: r.id,
-          entityType: r.entityType,
-          entityId: r.entityId,
-          action: r.action,
-          changedBy: r.changedBy,
-          changedByName: r.changedBy ? nameMap.get(r.changedBy) ?? null : null,
-          changes: r.changes,
-          createdAt: r.createdAt,
-        })),
+        month: monthMatches,
+        scope: employeeId ? "employee" : "company",
+        entries: rows.map(r => {
+          const c = (r.changes as any) ?? {}
+          const empId: string | undefined = c.employeeId
+          return {
+            id: r.id,
+            entityType: r.entityType,
+            entityId: r.entityId,
+            action: r.action,
+            changedBy: r.changedBy,
+            changedByName: r.changedBy ? userNameMap.get(r.changedBy) ?? null : null,
+            affectedEmployeeId: empId ?? null,
+            affectedEmployeeName: empId ? empNameMap.get(empId) ?? null : null,
+            changes: r.changes,
+            createdAt: r.createdAt,
+          }
+        }),
       },
       { headers: { "Cache-Control": "no-store" } }
     )
