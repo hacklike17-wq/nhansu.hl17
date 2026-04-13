@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requirePermission, errorResponse } from "@/lib/permission"
+import { lockedEmployeeIdsForMonth } from "@/lib/chamcong-guard"
 
 /**
  * POST /api/work-units/auto-fill
@@ -123,6 +124,11 @@ export async function POST(req: NextRequest) {
 
     const employeeIds = employees.map(e => e.id)
 
+    // ── Skip employees whose payroll for target month is NOT DRAFT ──
+    // (PENDING / APPROVED / LOCKED / PAID). Their data is frozen; auto-fill
+    // must not silently mutate it.
+    const lockedEmpIds = await lockedEmployeeIdsForMonth(companyId, monthStart, employeeIds)
+
     // ── Existing WorkUnits in range — for idempotency ─────────────
     const existing = await db.workUnit.findMany({
       where: {
@@ -175,8 +181,15 @@ export async function POST(req: NextRequest) {
     const rowsToCreate: Row[] = []
     let skippedExisting = 0
     let skippedLeave = 0
+    let skippedLocked = 0
 
     for (const emp of employees) {
+      // Skip NV has non-DRAFT payroll for target month
+      if (lockedEmpIds.has(emp.id)) {
+        skippedLocked++
+        continue
+      }
+
       const empStart = emp.startDate as Date
       // Cận trên = min(endDate, cutoff). Nếu endDate < monthStart → skip.
       const empEnd = (emp.endDate as Date | null) ?? cutoff
@@ -236,7 +249,7 @@ export async function POST(req: NextRequest) {
     const monthKey = `${targetY}-${String(targetM + 1).padStart(2, "0")}`
 
     // Audit: 1 row per auto-fill batch (summary, not per cell)
-    if (createdCount > 0) {
+    if (createdCount > 0 || skippedLocked > 0) {
       db.auditLog.create({
         data: {
           companyId,
@@ -253,6 +266,7 @@ export async function POST(req: NextRequest) {
             created: createdDefault,
             createdLeaveZeroes: skippedLeave,
             skippedExisting,
+            skippedLocked,
           },
         },
       }).catch(err => console.warn("audit auto-fill failed:", err))
@@ -269,6 +283,7 @@ export async function POST(req: NextRequest) {
         created: createdDefault,
         createdLeaveZeroes: skippedLeave,
         skippedExisting,
+        skippedLocked,
         totalCreated: createdCount,
       },
       { headers: { "Cache-Control": "no-store" } }

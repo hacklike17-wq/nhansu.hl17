@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { UpsertWorkUnitSchema } from "@/lib/schemas/attendance"
 import { autoRecalcDraftPayroll } from "@/lib/services/payroll.service"
 import { requireSession, requirePermission, errorResponse } from "@/lib/permission"
+import { requireDraftPayroll } from "@/lib/chamcong-guard"
 
 /**
  * DELETE /api/work-units?employeeId=xxx&month=YYYY-MM
@@ -113,6 +114,9 @@ export async function POST(req: NextRequest) {
 
     const { employeeId, date, units, note } = parsed.data
     const dateObj = new Date(date + "T00:00:00Z")
+
+    // Guard: reject if the employee's payroll for this month is not DRAFT
+    await requireDraftPayroll(employeeId, dateObj)
 
     // Capture the previous value (if any) for the audit trail
     const previous = await db.workUnit.findUnique({

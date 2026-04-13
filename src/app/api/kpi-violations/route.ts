@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { z } from "zod"
 import { autoRecalcDraftPayroll } from "@/lib/services/payroll.service"
 import { requirePermission, errorResponse } from "@/lib/permission"
+import { requireDraftPayroll } from "@/lib/chamcong-guard"
 
 const UpsertKpiSchema = z.object({
   employeeId: z.string().min(1),
@@ -60,6 +61,9 @@ export async function POST(req: NextRequest) {
 
     const { employeeId, date, types, note } = parsed.data
     const dateObj = new Date(date + "T00:00:00Z")
+
+    // Guard: reject if the employee's payroll for this month is not DRAFT
+    await requireDraftPayroll(employeeId, dateObj)
 
     // Capture previous types for audit diff
     const previous = await db.kpiViolation.findFirst({
