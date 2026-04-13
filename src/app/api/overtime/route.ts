@@ -60,22 +60,39 @@ export async function POST(req: NextRequest) {
     const { employeeId, date, hours, note } = parsed.data
     const dateObj = new Date(date + "T00:00:00Z")
 
+    const existingBefore = await db.overtimeEntry.findFirst({
+      where: { companyId, employeeId, date: dateObj },
+    })
+
     if (hours === 0) {
       await db.overtimeEntry.deleteMany({
         where: { companyId, employeeId, date: dateObj },
       })
+      if (existingBefore) {
+        db.auditLog.create({
+          data: {
+            companyId,
+            entityType: "OvertimeEntry",
+            entityId: existingBefore.id,
+            action: "DELETE",
+            changedBy: ctx.userId,
+            changes: {
+              employeeId,
+              date,
+              hoursFrom: Number(existingBefore.hours),
+              hoursTo: 0,
+            },
+          },
+        }).catch(err => console.warn("audit overtime DELETE failed:", err))
+      }
       autoRecalcDraftPayroll(companyId, employeeId, dateObj).catch(() => {})
       return NextResponse.json({ ok: true, deleted: true })
     }
 
-    const existing = await db.overtimeEntry.findFirst({
-      where: { companyId, employeeId, date: dateObj },
-    })
-
     let entry
-    if (existing) {
+    if (existingBefore) {
       entry = await db.overtimeEntry.update({
-        where: { id: existing.id },
+        where: { id: existingBefore.id },
         data: { hours, note: note ?? null },
       })
     } else {
@@ -84,11 +101,29 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    db.auditLog.create({
+      data: {
+        companyId,
+        entityType: "OvertimeEntry",
+        entityId: entry.id,
+        action: existingBefore ? "UPDATE" : "CREATE",
+        changedBy: ctx.userId,
+        changes: {
+          employeeId,
+          date,
+          hoursFrom: existingBefore ? Number(existingBefore.hours) : null,
+          hoursTo: hours,
+          noteFrom: existingBefore?.note ?? null,
+          noteTo: note ?? null,
+        },
+      },
+    }).catch(err => console.warn("audit overtime POST failed:", err))
+
     autoRecalcDraftPayroll(companyId, employeeId, dateObj).catch(err =>
       console.warn("autoRecalcDraftPayroll after overtime failed:", err)
     )
 
-    return NextResponse.json(entry, { status: existing ? 200 : 201 })
+    return NextResponse.json(entry, { status: existingBefore ? 200 : 201 })
   } catch (e) {
     return errorResponse(e)
   }

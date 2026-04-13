@@ -187,6 +187,27 @@ export async function POST(_req: NextRequest) {
     // "default" creation count to report the breakdown clearly.
     const createdDefault = createdCount - skippedLeave
 
+    // Audit: 1 row per auto-fill batch (summary, not per cell)
+    if (createdCount > 0) {
+      db.auditLog.create({
+        data: {
+          companyId,
+          entityType: "WorkUnit",
+          entityId: "AUTO_FILL", // not a real id — group key for batch ops
+          action: "AUTO_FILL",
+          changedBy: ctx.userId,
+          changes: {
+            today: `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`,
+            employees: employees.length,
+            workdaysProcessed: monthWorkdays.length,
+            created: createdDefault,
+            createdLeaveZeroes: skippedLeave,
+            skippedExisting,
+          },
+        },
+      }).catch(err => console.warn("audit auto-fill failed:", err))
+    }
+
     return NextResponse.json(
       {
         ok: true,

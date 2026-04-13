@@ -61,11 +61,36 @@ export async function POST(req: NextRequest) {
     const { employeeId, date, types, note } = parsed.data
     const dateObj = new Date(date + "T00:00:00Z")
 
+    // Capture previous types for audit diff
+    const previous = await db.kpiViolation.findFirst({
+      where: { employeeId, date: dateObj },
+      select: { id: true, types: true, note: true },
+    })
+
     await db.kpiViolation.deleteMany({
       where: { employeeId, date: dateObj },
     })
 
     if (types.length === 0) {
+      if (previous) {
+        db.auditLog.create({
+          data: {
+            companyId,
+            entityType: "KpiViolation",
+            entityId: previous.id,
+            action: "DELETE",
+            changedBy: ctx.userId,
+            changes: {
+              employeeId,
+              date,
+              typesFrom: previous.types,
+              typesTo: [],
+              noteFrom: previous.note ?? null,
+              noteTo: null,
+            },
+          },
+        }).catch(err => console.warn("audit kpi DELETE failed:", err))
+      }
       autoRecalcDraftPayroll(companyId, employeeId, dateObj).catch(() => {})
       return NextResponse.json({ deleted: true })
     }
@@ -73,6 +98,24 @@ export async function POST(req: NextRequest) {
     const record = await db.kpiViolation.create({
       data: { companyId, employeeId, date: dateObj, types, note },
     })
+
+    db.auditLog.create({
+      data: {
+        companyId,
+        entityType: "KpiViolation",
+        entityId: record.id,
+        action: previous ? "UPDATE" : "CREATE",
+        changedBy: ctx.userId,
+        changes: {
+          employeeId,
+          date,
+          typesFrom: previous?.types ?? [],
+          typesTo: types,
+          noteFrom: previous?.note ?? null,
+          noteTo: note ?? null,
+        },
+      },
+    }).catch(err => console.warn("audit kpi POST failed:", err))
 
     autoRecalcDraftPayroll(companyId, employeeId, dateObj).catch(err =>
       console.warn("autoRecalcDraftPayroll after kpi violation failed:", err)

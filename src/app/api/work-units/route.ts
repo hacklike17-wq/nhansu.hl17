@@ -42,6 +42,18 @@ export async function DELETE(req: NextRequest) {
       where: { companyId, employeeId, date: { gte: monthStart, lte: monthEnd } },
     })
 
+    // Audit: bulk wipe of an employee's month
+    db.auditLog.create({
+      data: {
+        companyId,
+        entityType: "WorkUnit",
+        entityId: employeeId, // bulk → key by employee for easy lookup
+        action: "BULK_DELETE",
+        changedBy: ctx.userId,
+        changes: { employeeId, month, deleted: result.count },
+      },
+    }).catch(err => console.warn("audit work-units DELETE failed:", err))
+
     return NextResponse.json({ ok: true, deleted: result.count })
   } catch (e) {
     return errorResponse(e)
@@ -102,11 +114,36 @@ export async function POST(req: NextRequest) {
     const { employeeId, date, units, note } = parsed.data
     const dateObj = new Date(date + "T00:00:00Z")
 
+    // Capture the previous value (if any) for the audit trail
+    const previous = await db.workUnit.findUnique({
+      where: { employeeId_date: { employeeId, date: dateObj } },
+      select: { id: true, units: true, note: true },
+    })
+
     const record = await db.workUnit.upsert({
       where: { employeeId_date: { employeeId, date: dateObj } },
       create: { companyId, employeeId, date: dateObj, units, note },
       update: { units, note },
     })
+
+    // Audit: who changed the cell, when, from what to what
+    db.auditLog.create({
+      data: {
+        companyId,
+        entityType: "WorkUnit",
+        entityId: record.id,
+        action: previous ? "UPDATE" : "CREATE",
+        changedBy: ctx.userId,
+        changes: {
+          employeeId,
+          date,
+          unitsFrom: previous ? Number(previous.units) : null,
+          unitsTo: units,
+          noteFrom: previous?.note ?? null,
+          noteTo: note ?? null,
+        },
+      },
+    }).catch(err => console.warn("audit work-units POST failed:", err))
 
     autoRecalcDraftPayroll(companyId, employeeId, dateObj).catch(err =>
       console.warn("autoRecalcDraftPayroll failed:", err)

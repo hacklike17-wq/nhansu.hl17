@@ -340,6 +340,44 @@ export default function ChamCongPage() {
   /* ══════════════ LOG DRAWER ══════════════ */
   type LogState = { empId: string; empName: string }
   const [logState, setLogState] = useState<LogState | null>(null)
+  type DrawerTab = 'data' | 'history'
+  const [logTab, setLogTab] = useState<DrawerTab>('data')
+
+  // Audit log fetched on demand when drawer opens "history" tab
+  type AuditEntry = {
+    id: string
+    entityType: string
+    action: string
+    changedBy: string | null
+    changedByName: string | null
+    changes: any
+    createdAt: string
+  }
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([])
+  const [auditLoading, setAuditLoading] = useState(false)
+
+  // Fetch audit when switching to history tab
+  async function fetchAudit(empId: string) {
+    setAuditLoading(true)
+    try {
+      const url = `/api/chamcong/audit-log?employeeId=${empId}&month=${month}`
+      const res = await fetch(url, { cache: 'no-store' })
+      const data = await res.json()
+      setAuditEntries(data.entries ?? [])
+    } catch (e) {
+      console.error('fetchAudit error:', e)
+      setAuditEntries([])
+    } finally {
+      setAuditLoading(false)
+    }
+  }
+
+  // Reset tab + load audit when drawer opens
+  function openLogDrawer(empId: string, empName: string) {
+    setLogState({ empId, empName })
+    setLogTab('data')
+    setAuditEntries([])
+  }
 
   /* ── ColGroup: employee + extra cols fixed, day cols flex ──
      Table 1: extraCols = [LOG_W, TOT_W]  (Log left of Tổng)
@@ -470,7 +508,7 @@ export default function ChamCongPage() {
                       {isManager && (
                         <td className={`${SRL} bg-white group-hover:bg-blue-50/10 px-1.5 py-1.5 text-center`}
                           style={{ right: TOT_W, width: LOG_W }}>
-                          <button onClick={() => setLogState({ empId: emp.id, empName: emp.fullName })}
+                          <button onClick={() => openLogDrawer(emp.id, emp.fullName)}
                             className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-blue-600 hover:bg-blue-50 border border-blue-200 transition-colors">
                             <Calendar size={10} /> Log
                           </button>
@@ -501,18 +539,20 @@ export default function ChamCongPage() {
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden w-full">
           <div ref={scrollRef2} className="overflow-x-auto" onScroll={e => syncScroll(e.currentTarget)}>
             <table className="text-[12px] border-collapse table-fixed w-full">
-              <TableCols extraCols={[TOT_W]} />
+              <TableCols extraCols={isManager ? [LOG_W, TOT_W] : [TOT_W]} />
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className={`${STICKY_H} px-3 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide`}>Nhân viên</th>
                   <DayHeaders />
+                  {isManager && <th className={`${SRL_H} px-2 py-2 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap`}
+                    style={{ right: TOT_W, width: LOG_W }}>Log</th>}
                   <th className={`${SR_H} right-0 px-2 py-2 text-right text-[11px] font-bold text-gray-600 uppercase tracking-wide whitespace-nowrap`}
                     style={{ right: 0, width: TOT_W }}>Tổng</th>
                 </tr>
               </thead>
               <tbody>
                 {targets.length === 0 ? (
-                  <tr><td colSpan={days.length + 2} className="px-4 py-6 text-center text-sm text-gray-400">Chưa có nhân viên</td></tr>
+                  <tr><td colSpan={days.length + (isManager ? 3 : 2)} className="px-4 py-6 text-center text-sm text-gray-400">Chưa có nhân viên</td></tr>
                 ) : targets.map((emp: any) => {
                   const totalOt = days.reduce((s, d) => s + (otMap[`${emp.id}|${d}`]?.hours ?? 0), 0)
                   return (
@@ -535,6 +575,15 @@ export default function ChamCongPage() {
                           </td>
                         )
                       })}
+                      {isManager && (
+                        <td className={`${SRL} bg-white group-hover:bg-orange-50/10 px-1.5 py-1.5 text-center`}
+                          style={{ right: TOT_W, width: LOG_W }}>
+                          <button onClick={() => openLogDrawer(emp.id, emp.fullName)}
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-orange-600 hover:bg-orange-50 border border-orange-200 transition-colors">
+                            <Calendar size={10} /> Log
+                          </button>
+                        </td>
+                      )}
                       <td className={`${SR} bg-orange-50/40 group-hover:bg-orange-100/50 right-0 px-2 py-1.5 text-right font-bold whitespace-nowrap`}
                         style={{ right: 0, width: TOT_W }}>
                         {totalOt > 0
@@ -572,13 +621,15 @@ export default function ChamCongPage() {
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden w-full">
           <div ref={scrollRef3} className="overflow-x-auto" onScroll={e => syncScroll(e.currentTarget)}>
             <table className="text-[12px] border-collapse table-fixed w-full">
-              <TableCols extraCols={[TOT_W]} />
+              <TableCols extraCols={isManager ? [LOG_W, TOT_W] : [TOT_W]} />
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className={`${STICKY_H} px-3 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide`}>
                     Nhân viên
                   </th>
                   <DayHeaders />
+                  {isManager && <th className={`${SRL_H} px-2 py-2 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap`}
+                    style={{ right: TOT_W, width: LOG_W }}>Log</th>}
                   <th className={`${SR_H} right-0 px-2 py-2 text-right text-[11px] font-bold text-gray-600 uppercase tracking-wide whitespace-nowrap`}
                     style={{ right: 0, width: TOT_W }}>
                     Vi phạm
@@ -626,6 +677,15 @@ export default function ChamCongPage() {
                         )
                       })}
 
+                      {isManager && (
+                        <td className={`${SRL} bg-white group-hover:bg-rose-50/10 px-1.5 py-1.5 text-center`}
+                          style={{ right: TOT_W, width: LOG_W }}>
+                          <button onClick={() => openLogDrawer(emp.id, emp.fullName)}
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-rose-600 hover:bg-rose-50 border border-rose-200 transition-colors">
+                            <Calendar size={10} /> Log
+                          </button>
+                        </td>
+                      )}
                       <td className={`${SR} bg-rose-50/40 group-hover:bg-rose-100/50 right-0 px-2 py-1.5 text-right`}
                         style={{ right: 0, width: TOT_W }}>
                         {totalV === 0 ? (
@@ -808,6 +868,26 @@ export default function ChamCongPage() {
                 <button onClick={() => setLogState(null)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
               </div>
 
+              {/* Tab switcher */}
+              <div className="flex gap-1 px-4 pt-2 border-b border-gray-100">
+                <button
+                  onClick={() => setLogTab('data')}
+                  className={`px-3 py-2 text-[11px] font-semibold rounded-t-lg transition ${logTab === 'data' ? 'bg-white text-blue-700 border border-b-white border-gray-200' : 'text-gray-500 hover:text-gray-900'}`}
+                >
+                  Dữ liệu
+                </button>
+                <button
+                  onClick={() => {
+                    setLogTab('history')
+                    if (auditEntries.length === 0) fetchAudit(logState.empId)
+                  }}
+                  className={`px-3 py-2 text-[11px] font-semibold rounded-t-lg transition ${logTab === 'history' ? 'bg-white text-blue-700 border border-b-white border-gray-200' : 'text-gray-500 hover:text-gray-900'}`}
+                >
+                  Lịch sử thay đổi
+                </button>
+              </div>
+
+              {logTab === 'data' && (
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
                 {days4log.map(date => {
                   const units = logUnits[date] as number | undefined
@@ -846,6 +926,64 @@ export default function ChamCongPage() {
                   <p className="text-center text-xs text-gray-400 py-8">Chưa có dữ liệu trong tháng này</p>
                 )}
               </div>
+              )}
+
+              {logTab === 'history' && (
+              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+                {auditLoading ? (
+                  <p className="text-center text-xs text-gray-400 py-8">Đang tải lịch sử...</p>
+                ) : auditEntries.length === 0 ? (
+                  <p className="text-center text-xs text-gray-400 py-8">Chưa có thay đổi nào trong tháng</p>
+                ) : (
+                  auditEntries.map(e => {
+                    const c = e.changes ?? {}
+                    const when = new Date(e.createdAt).toLocaleString('vi-VN', {
+                      day: '2-digit', month: '2-digit', year: '2-digit',
+                      hour: '2-digit', minute: '2-digit',
+                    })
+                    let typeBadge = ''
+                    let typeCls = ''
+                    if (e.entityType === 'WorkUnit')      { typeBadge = 'Công';    typeCls = 'bg-green-50 text-green-700 border-green-200' }
+                    else if (e.entityType === 'OvertimeEntry') { typeBadge = 'Tăng ca'; typeCls = 'bg-orange-50 text-orange-700 border-orange-200' }
+                    else if (e.entityType === 'KpiViolation')  { typeBadge = 'KPI';     typeCls = 'bg-rose-50 text-rose-700 border-rose-200' }
+
+                    let summary = ''
+                    if (e.action === 'AUTO_FILL') {
+                      summary = `Tự động chấm: +${c.created ?? 0} công · +${c.createdLeaveZeroes ?? 0} nghỉ KL · giữ ${c.skippedExisting ?? 0}`
+                    } else if (e.action === 'BULK_DELETE') {
+                      summary = `Xoá tháng (${c.deleted ?? 0} ngày)`
+                    } else if (e.entityType === 'WorkUnit') {
+                      const from = c.unitsFrom === null || c.unitsFrom === undefined ? '∅' : String(c.unitsFrom)
+                      const to = c.unitsTo === null || c.unitsTo === undefined ? '∅' : String(c.unitsTo)
+                      summary = `${c.date ?? ''}: ${from} → ${to} công${c.noteTo ? ' · ' + c.noteTo : ''}`
+                    } else if (e.entityType === 'OvertimeEntry') {
+                      const from = c.hoursFrom === null || c.hoursFrom === undefined ? '∅' : String(c.hoursFrom) + 'h'
+                      const to = c.hoursTo === null || c.hoursTo === undefined ? '∅' : String(c.hoursTo) + 'h'
+                      summary = `${c.date ?? ''}: ${from} → ${to}${c.noteTo ? ' · ' + c.noteTo : ''}`
+                    } else if (e.entityType === 'KpiViolation') {
+                      const from = (c.typesFrom ?? []).join(',') || '∅'
+                      const to = (c.typesTo ?? []).join(',') || '∅'
+                      summary = `${c.date ?? ''}: [${from}] → [${to}]${c.noteTo ? ' · ' + c.noteTo : ''}`
+                    }
+
+                    return (
+                      <div key={e.id} className="py-2 border-b border-gray-50 last:border-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold border ${typeCls}`}>
+                            {typeBadge} · {e.action}
+                          </span>
+                          <span className="text-[10px] text-gray-400">{when}</span>
+                        </div>
+                        <div className="text-[11px] text-gray-700">{summary}</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">
+                          Bởi: <span className="font-semibold">{e.changedByName ?? 'Hệ thống'}</span>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+              )}
 
               <div className="border-t border-gray-200 px-5 py-3 space-y-1.5">
                 {([
