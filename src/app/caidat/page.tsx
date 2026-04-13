@@ -34,9 +34,9 @@ export default function CaiDatPage() {
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  const canSeeNhansu = ['boss_admin', 'admin', 'hr_manager'].includes(user?.role ?? '')
-  const isBossAdmin = user?.role === 'boss_admin'
-  const canConfig   = ['boss_admin', 'admin'].includes(user?.role ?? '')
+  const canSeeNhansu = ['admin', 'manager'].includes(user?.role ?? '')
+  const isBossAdmin = user?.role === 'admin'
+  const canConfig   = user?.role === 'admin'
 
   /* ── Company settings state ── */
   const [companyForm, setCompanyForm] = useState(COMPANY_SETTINGS)

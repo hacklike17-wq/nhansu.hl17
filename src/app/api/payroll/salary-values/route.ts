@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { db } from "@/lib/db"
 import { z } from "zod"
 import { upsertPayroll } from "@/lib/services/payroll.service"
+import { requirePermission, errorResponse } from "@/lib/permission"
 
 /**
  * Legacy canonical keys that are always allowed for manual input,
@@ -30,21 +30,16 @@ const SaveManualInputSchema = z.object({
  * Phase 05: Save a manual input SalaryValue and trigger payroll recalculation.
  */
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  try {
+    const ctx = await requirePermission("luong.edit")
+    const companyId = ctx.companyId!
+    const body = await req.json()
 
-  const role = (session.user as any).role
-  if (!["boss_admin", "admin"].includes(role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    const parsed = SaveManualInputSchema.safeParse(body)
+    if (!parsed.success)
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-  const companyId = (session.user as any).companyId
-  const body = await req.json()
-
-  const parsed = SaveManualInputSchema.safeParse(body)
-  if (!parsed.success)
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
-
-  const { payrollId, columnKey, month, value } = parsed.data
+    const { payrollId, columnKey, month, value } = parsed.data
 
   // Allow legacy canonical keys OR any company column that is type=number and isEditable=true
   const isAllowed =
@@ -83,16 +78,24 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  // Recalculate payroll with new input
-  try {
-    const updated = await upsertPayroll(companyId, payroll.employeeId, month)
-    return NextResponse.json({ ok: true, payroll: updated })
-  } catch (err: any) {
-    // SalaryValue was already saved — log the recalc failure but don't lose the save
-    console.error("upsertPayroll after salary-value save failed:", err?.message ?? err)
-    return NextResponse.json(
-      { error: `Đã lưu giá trị nhưng tính lại lương thất bại: ${err?.message ?? "lỗi không xác định"}` },
-      { status: 500 }
-    )
+    // Mark payroll as needing recalc (Phase 03b)
+    await db.payroll.update({
+      where: { id: payrollId },
+      data: { needsRecalc: true },
+    })
+
+    // Recalculate payroll with new input
+    try {
+      const updated = await upsertPayroll(companyId, payroll.employeeId, month)
+      return NextResponse.json({ ok: true, payroll: updated })
+    } catch (err: any) {
+      console.error("upsertPayroll after salary-value save failed:", err?.message ?? err)
+      return NextResponse.json(
+        { error: `Đã lưu giá trị nhưng tính lại lương thất bại: ${err?.message ?? "lỗi không xác định"}` },
+        { status: 500 }
+      )
+    }
+  } catch (e) {
+    return errorResponse(e)
   }
 }

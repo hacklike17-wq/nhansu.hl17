@@ -24,7 +24,7 @@ export type BudgetItem = {
 }
 
 /* ─── Auth / Permissions ─── */
-export type UserRole = 'boss_admin' | 'admin' | 'hr_manager' | 'accountant' | 'employee'
+export type UserRole = 'admin' | 'manager' | 'employee'
 
 export type PermissionGroup = {
   id: string

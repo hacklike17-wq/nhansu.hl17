@@ -1,30 +1,28 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { db } from "@/lib/db"
 import { UpdatePayrollStatusSchema } from "@/lib/schemas/payroll"
 import { buildPayrollSnapshot } from "@/lib/services/payroll.service"
+import { requireRole, requireSession, canApproveSalary, errorResponse } from "@/lib/permission"
 
 export async function DELETE(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  try {
+    const ctx = await requireRole("admin")
+    const { id } = await params
 
-  const role = (session.user as any).role
-  if (!["boss_admin", "admin"].includes(role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    if (!ctx.companyId) return NextResponse.json({ error: "No company context" }, { status: 400 })
+    const payroll = await db.payroll.findFirst({ where: { id, companyId: ctx.companyId } })
+    if (!payroll) return NextResponse.json({ error: "Không tìm thấy" }, { status: 404 })
+    if (payroll.status !== "DRAFT")
+      return NextResponse.json({ error: "Chỉ xóa được bản lương DRAFT" }, { status: 400 })
 
-  const { id } = await params
-  const companyId = (session.user as any).companyId
-
-  const payroll = await db.payroll.findFirst({ where: { id, companyId } })
-  if (!payroll) return NextResponse.json({ error: "Không tìm thấy" }, { status: 404 })
-  if (payroll.status !== "DRAFT")
-    return NextResponse.json({ error: "Chỉ xóa được bản lương DRAFT" }, { status: 400 })
-
-  await db.payroll.delete({ where: { id } })
-  return NextResponse.json({ ok: true })
+    await db.payroll.delete({ where: { id } })
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    return errorResponse(e)
+  }
 }
 
 // Phase 07: LOCKED added between APPROVED and PAID
@@ -40,28 +38,58 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  try {
+    const ctx = await requireSession()
+    const { id } = await params
+    const body = await req.json()
 
-  const { id } = await params
-  const body = await req.json()
+    const parsed = UpdatePayrollStatusSchema.safeParse(body)
+    if (!parsed.success)
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-  const parsed = UpdatePayrollStatusSchema.safeParse(body)
-  if (!parsed.success)
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    const { status, note } = parsed.data
 
-  const { status, note } = parsed.data
+    if (!ctx.companyId) return NextResponse.json({ error: "No company context" }, { status: 400 })
+    const payroll = await db.payroll.findFirst({ where: { id, companyId: ctx.companyId } })
+    if (!payroll) return NextResponse.json({ error: "Không tìm thấy" }, { status: 404 })
 
-  const payroll = await db.payroll.findUnique({ where: { id } })
-  if (!payroll) return NextResponse.json({ error: "Không tìm thấy" }, { status: 404 })
+    // Role-gated transitions:
+    //  - Employee: only own payroll, only DRAFT → PENDING (submit for approval)
+    //  - Manager: can submit (DRAFT → PENDING) and revert (PENDING → DRAFT)
+    //  - Admin: all transitions including approve, lock, mark paid
+    if (ctx.role === "employee") {
+      if (payroll.employeeId !== ctx.employeeId) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      if (!(payroll.status === "DRAFT" && status === "PENDING")) {
+        return NextResponse.json({ error: "Chỉ được gửi duyệt bảng lương của mình" }, { status: 403 })
+      }
+    } else if (ctx.role === "manager") {
+      const managerAllowed: Array<[string, string]> = [
+        ["DRAFT", "PENDING"],
+        ["PENDING", "DRAFT"],
+      ]
+      if (!managerAllowed.some(([f, t]) => f === payroll.status && t === status)) {
+        return NextResponse.json({ error: "Chỉ Admin mới được duyệt/khoá lương" }, { status: 403 })
+      }
+    } else if (ctx.role === "admin") {
+      // All transitions allowed by VALID_TRANSITIONS below
+    } else {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
 
-  const allowed = VALID_TRANSITIONS[payroll.status] ?? []
-  if (!allowed.includes(status)) {
-    return NextResponse.json(
-      { error: `Không thể chuyển từ ${payroll.status} sang ${status}` },
-      { status: 400 }
-    )
-  }
+    // For approval-level transitions, explicit capability check
+    if ((status === "APPROVED" || status === "LOCKED") && !canApproveSalary(ctx)) {
+      return NextResponse.json({ error: "Không có quyền duyệt lương" }, { status: 403 })
+    }
+
+    const allowed = VALID_TRANSITIONS[payroll.status] ?? []
+    if (!allowed.includes(status)) {
+      return NextResponse.json(
+        { error: `Không thể chuyển từ ${payroll.status} sang ${status}` },
+        { status: 400 }
+      )
+    }
 
   // Phase 09: DRAFT → PENDING blocked if error-level anomalies exist
   if (status === "PENDING") {
@@ -83,53 +111,54 @@ export async function PATCH(
     )
   }
 
-  // Phase 07b: Build snapshot OUTSIDE transaction (async I/O shouldn't block tx)
-  let calcSnapshot: any = undefined
-  if (status === "LOCKED") {
-    calcSnapshot = await buildPayrollSnapshot(
-      payroll.companyId,
-      payroll.employeeId,
-      payroll.month,
-      session.user.id!,
-      payroll
-    )
-  }
-
-  const now = new Date()
-  const updated = await db.$transaction(async (tx: any) => {
-    // Phase 07: concurrency guard — only proceed if status still matches expected previous state
-    const updateResult = await tx.payroll.updateMany({
-      where: { id, companyId: payroll.companyId, status: payroll.status },
-      data: {
-        status,
-        note,
-        ...(status === "APPROVED" ? { approvedBy: session.user.id, approvedAt: now } : {}),
-        ...(status === "LOCKED"   ? { approvedBy: session.user.id, approvedAt: now, needsRecalc: false, snapshot: calcSnapshot } : {}),
-        ...(status === "PAID"     ? { paidAt: now } : {}),
-      },
-    })
-
-    if (updateResult.count === 0) {
-      throw new Error("Bảng lương đã được xử lý bởi người khác")
+    // Phase 07b: Build snapshot OUTSIDE transaction (async I/O shouldn't block tx)
+    let calcSnapshot: any = undefined
+    if (status === "LOCKED") {
+      calcSnapshot = await buildPayrollSnapshot(
+        payroll.companyId,
+        payroll.employeeId,
+        payroll.month,
+        ctx.userId,
+        payroll
+      )
     }
 
-    // Phase 07: write AuditLog with oldData + newData snapshots
-    const { id: _id, ...payrollOldData } = payroll as any
-    await tx.auditLog.create({
-      data: {
-        companyId: payroll.companyId,
-        entityType: "Payroll",
-        entityId: id,
-        action: status,
-        changedBy: session.user.id,
-        changes: { previousStatus: payroll.status, newStatus: status },
-        oldData: payrollOldData,
-        newData: { status, changedAt: now.toISOString(), changedBy: session.user.id },
-      },
+    const now = new Date()
+    const updated = await db.$transaction(async (tx: any) => {
+      const updateResult = await tx.payroll.updateMany({
+        where: { id, companyId: payroll.companyId, status: payroll.status },
+        data: {
+          status,
+          note,
+          ...(status === "APPROVED" ? { approvedBy: ctx.userId, approvedAt: now } : {}),
+          ...(status === "LOCKED"   ? { approvedBy: ctx.userId, approvedAt: now, needsRecalc: false, snapshot: calcSnapshot } : {}),
+          ...(status === "PAID"     ? { paidAt: now } : {}),
+        },
+      })
+
+      if (updateResult.count === 0) {
+        throw new Error("Bảng lương đã được xử lý bởi người khác")
+      }
+
+      const { id: _id, ...payrollOldData } = payroll as any
+      await tx.auditLog.create({
+        data: {
+          companyId: payroll.companyId,
+          entityType: "Payroll",
+          entityId: id,
+          action: status,
+          changedBy: ctx.userId,
+          changes: { previousStatus: payroll.status, newStatus: status, note: note ?? null },
+          oldData: payrollOldData,
+          newData: { status, changedAt: now.toISOString(), changedBy: ctx.userId },
+        },
+      })
+
+      return tx.payroll.findUnique({ where: { id } })
     })
 
-    return tx.payroll.findUnique({ where: { id } })
-  })
-
-  return NextResponse.json(updated)
+    return NextResponse.json(updated)
+  } catch (e) {
+    return errorResponse(e)
+  }
 }

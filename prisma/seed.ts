@@ -98,74 +98,80 @@ async function main() {
   // ── PermissionGroups ──────────────────────────────────────────
   const groups = [
     {
-      name: "boss_admin",
-      label: "Boss Admin",
+      name: "admin",
+      label: "Quản trị viên",
+      description: "Toàn quyền hệ thống",
       permissions: ["*"],
       isSystem: true,
     },
     {
-      name: "admin",
-      label: "Quản trị viên",
+      name: "manager",
+      label: "Quản lý",
+      description: "Quản lý nhân sự, chấm công, lương, báo cáo",
       permissions: [
-        "dashboard.view", "nhanvien.view", "nhanvien.edit", "nhanvien.delete",
-        "chamcong.view", "chamcong.edit", "chamcong.config",
-        "luong.view", "luong.edit", "luong.approve", "luong.export", "luong.config",
-        "tuyendung.view", "tuyendung.edit",
-        "nghiphep.view", "nghiphep.edit", "nghiphep.approve",
-        "doanhthu.view", "chiphi.view", "dongtien.view", "ngansach.view", "congno.view",
-        "baocao.view", "baocao.export",
-        "phanquyen.view", "phanquyen.edit",
-        "caidat.view", "caidat.edit", "caidat.config",
-      ],
-      isSystem: true,
-    },
-    {
-      name: "hr_manager",
-      label: "QL Nhân sự",
-      permissions: [
-        "dashboard.view", "nhanvien.view", "nhanvien.edit",
+        "dashboard.view",
+        "nhanvien.view", "nhanvien.edit",
         "chamcong.view", "chamcong.edit",
         "luong.view", "luong.edit",
         "tuyendung.view", "tuyendung.edit",
-        "nghiphep.view", "nghiphep.edit", "nghiphep.approve",
+        "nghiphep.view", "nghiphep.edit",
         "doanhthu.view", "chiphi.view",
-        "baocao.view", "baocao.export",
-      ],
-      isSystem: true,
-    },
-    {
-      name: "accountant",
-      label: "Kế toán",
-      permissions: [
-        "dashboard.view", "nhanvien.view", "chamcong.view",
-        "luong.view", "luong.approve", "luong.export",
-        "doanhthu.view", "doanhthu.edit",
-        "chiphi.view", "chiphi.edit", "chiphi.approve",
-        "dongtien.view", "ngansach.view", "ngansach.edit",
-        "congno.view", "baocao.view", "baocao.export",
+        "dongtien.view", "ngansach.view", "congno.view",
+        "baocao.view",
       ],
       isSystem: true,
     },
     {
       name: "employee",
       label: "Nhân viên",
-      permissions: ["dashboard.view", "nhanvien.view", "chamcong.view", "luong.view", "nghiphep.view"],
+      description: "Chỉ xem thông tin cá nhân",
+      permissions: [
+        "dashboard.view",
+        "luong.view",
+        "chamcong.view",
+        "nghiphep.view", "nghiphep.edit",
+      ],
       isSystem: true,
     },
   ]
 
+  // Drop legacy groups from prior seed versions
+  await db.permissionGroup.deleteMany({
+    where: {
+      companyId: COMPANY_ID,
+      name: { in: ["boss_admin", "hr_manager", "accountant"] },
+    },
+  })
+
   for (const g of groups) {
     await db.permissionGroup.upsert({
       where: { companyId_name: { companyId: COMPANY_ID, name: g.name } },
-      update: { permissions: g.permissions },
+      update: {
+        label: g.label,
+        description: g.description,
+        permissions: g.permissions,
+        isSystem: g.isSystem,
+      },
       create: {
         companyId: COMPANY_ID,
         ...g,
-        description: g.label,
       },
     })
   }
   console.log(`✓ PermissionGroups: ${groups.length} nhóm`)
+
+  // Remap legacy User.role values to canonical roles
+  const roleRemaps: Array<[string, string]> = [
+    ["boss_admin", "admin"],
+    ["hr_manager", "manager"],
+    ["accountant", "manager"],
+  ]
+  for (const [from, to] of roleRemaps) {
+    await db.user.updateMany({
+      where: { companyId: COMPANY_ID, role: from },
+      data: { role: to },
+    })
+  }
 
   // ── Employees ─────────────────────────────────────────────────
   const employeesData = [
@@ -188,7 +194,7 @@ async function main() {
       position: "Quản lý nhân sự",
       contractType: "FULL_TIME" as const,
       baseSalary: 20_000_000,
-      role: "hr_manager" as const,
+      role: "manager" as const,
       code: "NV002",
     },
     {
@@ -199,7 +205,7 @@ async function main() {
       position: "Kế toán trưởng",
       contractType: "FULL_TIME" as const,
       baseSalary: 18_000_000,
-      role: "accountant" as const,
+      role: "manager" as const,
       code: "NV003",
     },
     {

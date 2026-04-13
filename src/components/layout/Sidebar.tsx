@@ -35,10 +35,8 @@ const BADGE_STYLE: Record<string, string> = {
 }
 
 const ROLE_LABEL: Record<string, string> = {
-  boss_admin: 'Boss Admin',
   admin: 'Quản trị viên',
-  hr_manager: 'QL Nhân sự',
-  accountant: 'Kế toán',
+  manager: 'Quản lý',
   employee: 'Nhân viên',
 }
 
@@ -127,7 +125,7 @@ export default function Sidebar() {
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-xs font-semibold text-gray-900 truncate">{user?.name || 'Admin'}</div>
-          <div className="text-[10px] text-gray-400">{ROLE_LABEL[user?.role || 'boss_admin']}</div>
+          <div className="text-[10px] text-gray-400">{ROLE_LABEL[user?.role || 'employee']}</div>
         </div>
         <button
           onClick={() => signOut({ callbackUrl: '/login' })}

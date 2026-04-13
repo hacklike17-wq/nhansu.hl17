@@ -25,20 +25,66 @@ export const ALL_MODULES = [
   { key: 'caidat',     label: 'Cài đặt' },
 ] as const
 
-export const ALL_ACTIONS = ['view','edit','delete','approve','export','config'] as const
+export const ALL_ACTIONS = ['view', 'edit', 'delete'] as const
+export type PermissionAction = (typeof ALL_ACTIONS)[number]
+
+export const CANONICAL_ROLES = ['admin', 'manager', 'employee'] as const
+export type CanonicalRole = (typeof CANONICAL_ROLES)[number]
+
+const LEGACY_ROLE_MAP: Record<string, CanonicalRole> = {
+  boss_admin: 'admin',
+  admin: 'admin',
+  hr_manager: 'manager',
+  accountant: 'manager',
+  manager: 'manager',
+  employee: 'employee',
+}
+
+export function normalizeRole(role: string | null | undefined): CanonicalRole {
+  if (!role) return 'employee'
+  return LEGACY_ROLE_MAP[role] ?? 'employee'
+}
 
 export const PERMISSION_GROUPS: PermissionGroup[] = [
-  { id:'PG01', name:'boss_admin', label:'Boss Admin',   description:'Toàn quyền hệ thống', isSystem:true,
-    permissions:['*'] },
-  { id:'PG02', name:'admin', label:'Quản trị viên',     description:'Xem tất cả + sửa HR & hệ thống', isSystem:true,
-    permissions:['dashboard.view','nhanvien.view','nhanvien.edit','nhanvien.delete','chamcong.view','chamcong.edit','chamcong.config','luong.view','luong.edit','luong.approve','luong.export','luong.config','tuyendung.view','tuyendung.edit','nghiphep.view','nghiphep.edit','nghiphep.approve','doanhthu.view','chiphi.view','dongtien.view','ngansach.view','congno.view','baocao.view','baocao.export','phanquyen.view','phanquyen.edit','caidat.view','caidat.edit','caidat.config'] },
-  { id:'PG03', name:'hr_manager', label:'QL Nhân sự',   description:'Quản lý nhân sự + xem tài chính', isSystem:true,
-    permissions:['dashboard.view','nhanvien.view','nhanvien.edit','chamcong.view','chamcong.edit','luong.view','luong.edit','tuyendung.view','tuyendung.edit','nghiphep.view','nghiphep.edit','nghiphep.approve','doanhthu.view','chiphi.view','baocao.view','baocao.export'] },
-
-  { id:'PG04', name:'accountant', label:'Kế toán',      description:'Quản lý tài chính + xem nhân sự', isSystem:true,
-    permissions:['dashboard.view','nhanvien.view','chamcong.view','luong.view','luong.approve','luong.export','doanhthu.view','doanhthu.edit','chiphi.view','chiphi.edit','chiphi.approve','dongtien.view','ngansach.view','ngansach.edit','congno.view','baocao.view','baocao.export'] },
-  { id:'PG05', name:'employee', label:'Nhân viên',      description:'Xem thông tin cá nhân', isSystem:true,
-    permissions:['dashboard.view','nhanvien.view','chamcong.view','luong.view','nghiphep.view'] },
+  {
+    id: 'PG_ADMIN',
+    name: 'admin',
+    label: 'Quản trị viên',
+    description: 'Toàn quyền hệ thống',
+    isSystem: true,
+    permissions: ['*'],
+  },
+  {
+    id: 'PG_MANAGER',
+    name: 'manager',
+    label: 'Quản lý',
+    description: 'Quản lý nhân sự, chấm công, lương, báo cáo',
+    isSystem: true,
+    permissions: [
+      'dashboard.view',
+      'nhanvien.view', 'nhanvien.edit',
+      'chamcong.view', 'chamcong.edit',
+      'luong.view', 'luong.edit',
+      'tuyendung.view', 'tuyendung.edit',
+      'nghiphep.view', 'nghiphep.edit',
+      'doanhthu.view', 'chiphi.view',
+      'dongtien.view', 'ngansach.view', 'congno.view',
+      'baocao.view',
+    ],
+  },
+  {
+    id: 'PG_EMPLOYEE',
+    name: 'employee',
+    label: 'Nhân viên',
+    description: 'Chỉ xem thông tin cá nhân',
+    isSystem: true,
+    permissions: [
+      'dashboard.view',
+      'luong.view',
+      'chamcong.view',
+      'nghiphep.view', 'nghiphep.edit',
+    ],
+  },
 ]
 
 /** Check if a permission list grants access */
@@ -122,7 +168,7 @@ export const EMPLOYEES: Employee[] = [
   { id:'E005', code:'NV005', name:'Nguyễn Trường Giang',   email:'gianghugi0212@gmail.com',       phone:'0866657532', department:'Hacklike17', departmentId:'D001', deptColor:'blue',  position:'Nhân viên',            role:'Nhân viên',  status:'working', joinDate:'2026-04-02', salary:8000000, responsibilitySalary:0, bankAccount:'--', bankName:'--', taxCode:'--', socialInsurance:'--', address:'--', dob:'2005-12-02', gender:'male',   hours:'--', contractType:'fulltime', accountEmail:'gianghugi0212@gmail.com',       accountPassword:'giang@123',  accountRole:'employee',   accountPermissions:[], accountStatus:'active' },
   { id:'E006', code:'NV006', name:'Nguyễn Mạnh Tiến',      email:'nguyenmanhtien.dvfb.93@gmail.com', phone:'0826131366', department:'Hacklike17', departmentId:'D001', deptColor:'blue', position:'Nhân viên',       role:'Nhân viên',  status:'working', joinDate:'2026-04-02', salary:8000000, responsibilitySalary:0, bankAccount:'--', bankName:'--', taxCode:'--', socialInsurance:'--', address:'--', dob:'1993-06-03', gender:'male',   hours:'--', contractType:'fulltime', accountEmail:'nguyenmanhtien.dvfb.93@gmail.com', accountPassword:'tien@123', accountRole:'employee',  accountPermissions:[], accountStatus:'active' },
   { id:'E007', code:'NV007', name:'Nguyễn Văn Tuấn',       email:'tuannvarena@gmail.com',         phone:'0869762258', department:'Hacklike17', departmentId:'D001', deptColor:'blue',  position:'Nhân viên',            role:'Nhân viên',  status:'working', joinDate:'2026-04-03', salary:8000000, responsibilitySalary:0, bankAccount:'--', bankName:'--', taxCode:'--', socialInsurance:'--', address:'--', dob:'2000-11-24', gender:'male',   hours:'--', contractType:'fulltime', accountEmail:'tuannvarena@gmail.com',         accountPassword:'tuan@123',   accountRole:'employee',   accountPermissions:[], accountStatus:'active' },
-  { id:'E008', code:'NV008', name:'Văn Hoà Nguyên',        email:'hoahenry1803@gmail.com',        phone:'0928976666', department:'Hacklike17', departmentId:'D001', deptColor:'blue',  position:'Quản lý',              role:'Quản lý',    status:'working', joinDate:'2026-04-03', salary:15000000, responsibilitySalary:2000000, bankAccount:'--', bankName:'--', taxCode:'--', socialInsurance:'--', address:'--', dob:'',           gender:'male',   hours:'--', contractType:'fulltime', accountEmail:'hoahenry1803@gmail.com',        accountPassword:'admin@123',  accountRole:'boss_admin', accountPermissions:[], accountStatus:'active' },
+  { id:'E008', code:'NV008', name:'Văn Hoà Nguyên',        email:'hoahenry1803@gmail.com',        phone:'0928976666', department:'Hacklike17', departmentId:'D001', deptColor:'blue',  position:'Quản lý',              role:'Quản lý',    status:'working', joinDate:'2026-04-03', salary:15000000, responsibilitySalary:2000000, bankAccount:'--', bankName:'--', taxCode:'--', socialInsurance:'--', address:'--', dob:'',           gender:'male',   hours:'--', contractType:'fulltime', accountEmail:'hoahenry1803@gmail.com',        accountPassword:'admin@123',  accountRole:'admin', accountPermissions:[], accountStatus:'active' },
 ]
 
 /* ═══════════════════════════════════════════════════
