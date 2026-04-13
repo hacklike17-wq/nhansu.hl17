@@ -66,6 +66,20 @@ export type ManagerStats = {
   attendanceKpi: KpiBreakdown
 }
 
+export type EmployeePersonalProfile = {
+  fullName: string
+  code: string | null
+  position: string
+  department: string
+  contractType: string
+  startDate: string | null
+  tenureLabel: string // "2 năm 3 tháng" — pre-formatted on server
+  phone: string | null
+  email: string
+  bankName: string | null
+  bankAccount: string | null
+}
+
 export type EmployeeStats = {
   myCurrentPayroll: {
     status: string
@@ -74,10 +88,13 @@ export type EmployeeStats = {
     netSalary: number
     needsRecalc: boolean
   } | null
+  /** Net salary of the previous month (if any) — used to compute the delta % shown on the hero card. */
+  myPreviousMonthNet: number | null
   myAttendanceThisMonth: number
   myPendingLeaves: number
   currentMonth: string
   myAttendanceKpi: KpiBreakdown
+  myProfile: EmployeePersonalProfile | null
 }
 
 function currentMonthDate(): Date {
@@ -87,6 +104,29 @@ function currentMonthDate(): Date {
 
 function formatMonthLabel(d: Date): string {
   return `${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`
+}
+
+const CONTRACT_LABEL: Record<string, string> = {
+  FULL_TIME: "Toàn thời gian",
+  PART_TIME: "Bán thời gian",
+  INTERN: "Thực tập",
+  FREELANCE: "Freelance",
+}
+
+/** Format tenure in Vietnamese: "2 năm 3 tháng" / "5 tháng" / "Mới vào" */
+function formatTenure(startDate: Date | null): string {
+  if (!startDate) return "—"
+  const now = new Date()
+  let years = now.getUTCFullYear() - startDate.getUTCFullYear()
+  let months = now.getUTCMonth() - startDate.getUTCMonth()
+  if (months < 0) {
+    years -= 1
+    months += 12
+  }
+  if (years === 0 && months === 0) return "Mới vào"
+  if (years === 0) return `${months} tháng`
+  if (months === 0) return `${years} năm`
+  return `${years} năm ${months} tháng`
 }
 
 export async function getAdminStats(companyId: string): Promise<AdminStats> {
@@ -155,27 +195,66 @@ export async function getEmployeeStats(
   const monthEnd = new Date(
     Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1, 0)
   )
+  const previousMonthDate = new Date(
+    Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth() - 1, 1)
+  )
 
-  const [myPayroll, attendanceAgg, myPendingLeaves, myAttendanceKpi] = await Promise.all([
-    db.payroll.findUnique({
-      where: { employeeId_month: { employeeId, month: monthDate } },
-      select: {
-        status: true,
-        baseSalary: true,
-        grossSalary: true,
-        netSalary: true,
-        needsRecalc: true,
-      },
-    }),
-    db.workUnit.aggregate({
-      where: { companyId, employeeId, date: { gte: monthStart, lte: monthEnd } },
-      _sum: { units: true },
-    }),
-    db.leaveRequest.count({
-      where: { companyId, employeeId, status: "PENDING" },
-    }),
-    getKpiBreakdown(companyId, monthDate, employeeId),
-  ])
+  const [myPayroll, previousPayroll, attendanceAgg, myPendingLeaves, myAttendanceKpi, employee] =
+    await Promise.all([
+      db.payroll.findUnique({
+        where: { employeeId_month: { employeeId, month: monthDate } },
+        select: {
+          status: true,
+          baseSalary: true,
+          grossSalary: true,
+          netSalary: true,
+          needsRecalc: true,
+        },
+      }),
+      db.payroll.findUnique({
+        where: { employeeId_month: { employeeId, month: previousMonthDate } },
+        select: { netSalary: true },
+      }),
+      db.workUnit.aggregate({
+        where: { companyId, employeeId, date: { gte: monthStart, lte: monthEnd } },
+        _sum: { units: true },
+      }),
+      db.leaveRequest.count({
+        where: { companyId, employeeId, status: "PENDING" },
+      }),
+      getKpiBreakdown(companyId, monthDate, employeeId),
+      db.employee.findFirst({
+        where: { id: employeeId, companyId, deletedAt: null },
+        select: {
+          fullName: true,
+          code: true,
+          position: true,
+          department: true,
+          contractType: true,
+          startDate: true,
+          phone: true,
+          email: true,
+          bankName: true,
+          bankAccount: true,
+        },
+      }),
+    ])
+
+  const profile: EmployeePersonalProfile | null = employee
+    ? {
+        fullName: employee.fullName,
+        code: employee.code,
+        position: employee.position,
+        department: employee.department,
+        contractType: CONTRACT_LABEL[employee.contractType] ?? employee.contractType,
+        startDate: employee.startDate ? (employee.startDate as Date).toISOString() : null,
+        tenureLabel: formatTenure(employee.startDate as Date | null),
+        phone: employee.phone,
+        email: employee.email,
+        bankName: employee.bankName,
+        bankAccount: employee.bankAccount,
+      }
+    : null
 
   return {
     myCurrentPayroll: myPayroll
@@ -187,10 +266,12 @@ export async function getEmployeeStats(
           needsRecalc: myPayroll.needsRecalc,
         }
       : null,
+    myPreviousMonthNet: previousPayroll ? Number(previousPayroll.netSalary) : null,
     myAttendanceThisMonth: Number(attendanceAgg._sum.units ?? 0),
     myPendingLeaves,
     currentMonth: formatMonthLabel(monthDate),
     myAttendanceKpi,
+    myProfile: profile,
   }
 }
 
