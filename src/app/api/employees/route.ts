@@ -1,63 +1,72 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { db } from "@/lib/db"
 import { CreateEmployeeSchema } from "@/lib/schemas/employee"
 import bcrypt from "bcryptjs"
+import { requirePermission, requireSession, errorResponse } from "@/lib/permission"
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  try {
+    const ctx = await requireSession()
+    const { searchParams } = new URL(req.url)
+    const department = searchParams.get("department")
+    const search = searchParams.get("search")
 
-  const { searchParams } = new URL(req.url)
-  const companyId = (session.user as any).companyId
-  const department = searchParams.get("department")
-  const search = searchParams.get("search")
+    // Employees can only see their own record (e.g., for personal profile page)
+    if (ctx.role === "employee") {
+      if (!ctx.employeeId) return NextResponse.json([])
+      const me = await db.employee.findFirst({
+        where: { id: ctx.employeeId, companyId: ctx.companyId ?? undefined, deletedAt: null },
+        include: { user: { select: { id: true, email: true, role: true } } },
+      })
+      return NextResponse.json(me ? [me] : [])
+    }
 
-  const employees = await db.employee.findMany({
-    where: {
-      companyId,
-      deletedAt: null,
-      ...(department ? { department } : {}),
-      ...(search
-        ? {
-            OR: [
-              { fullName: { contains: search, mode: "insensitive" } },
-              { email: { contains: search, mode: "insensitive" } },
-              { code: { contains: search, mode: "insensitive" } },
-            ],
-          }
-        : {}),
-    },
-    include: { user: { select: { id: true, email: true, role: true } } },
-    orderBy: [{ createdAt: "asc" }],
-  })
+    const employees = await db.employee.findMany({
+      where: {
+        companyId: ctx.companyId ?? undefined,
+        deletedAt: null,
+        ...(department ? { department } : {}),
+        ...(search
+          ? {
+              OR: [
+                { fullName: { contains: search, mode: "insensitive" } },
+                { email: { contains: search, mode: "insensitive" } },
+                { code: { contains: search, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
+      include: { user: { select: { id: true, email: true, role: true } } },
+      orderBy: [{ createdAt: "asc" }],
+    })
 
-  return NextResponse.json(employees)
+    return NextResponse.json(employees)
+  } catch (e) {
+    return errorResponse(e)
+  }
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const companyId = (session.user as any).companyId
-
-  let body: Record<string, unknown>
   try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: "Request body không hợp lệ" }, { status: 400 })
-  }
+    const ctx = await requirePermission("nhanvien.edit")
+    const companyId = ctx.companyId!
 
-  const parsed = CreateEmployeeSchema.safeParse({ ...body, companyId })
-  if (!parsed.success) {
-    console.error("[POST /api/employees] Zod error:", JSON.stringify(parsed.error.flatten()))
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
-  }
+    let body: Record<string, unknown>
+    try {
+      body = await req.json()
+    } catch {
+      return NextResponse.json({ error: "Request body không hợp lệ" }, { status: 400 })
+    }
 
-  const data = parsed.data
+    const parsed = CreateEmployeeSchema.safeParse({ ...body, companyId })
+    if (!parsed.success) {
+      console.error("[POST /api/employees] Zod error:", JSON.stringify(parsed.error.flatten()))
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
 
-  try {
-    // Check duplicate employee email within company
+    const data = parsed.data
+
+    // Dedup: active employee email within company
     const existingEmp = await db.employee.findFirst({
       where: { companyId, email: data.email, deletedAt: null },
     })
@@ -68,7 +77,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Check duplicate user email globally (User.email is globally unique)
+    // Dedup: user email globally (unique constraint)
     if (data.accountStatus !== "NO_ACCOUNT") {
       const existingUser = await db.user.findFirst({ where: { email: data.email } })
       if (existingUser) {
@@ -129,10 +138,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(employee, { status: 201 })
   } catch (error: unknown) {
-    console.error("[POST /api/employees] DB error:", error)
-
-    // Surface Prisma unique constraint violations
-    if (error && typeof error === "object" && "code" in error) {
+    if (error instanceof Error === false && error && typeof error === "object" && "code" in error) {
       const e = error as any
       if (e.code === "P2002") {
         const target: string[] = e.meta?.target ?? []
@@ -145,11 +151,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Dữ liệu liên kết không hợp lệ (foreign key)" }, { status: 400 })
       }
     }
-
-    const msg = error instanceof Error ? error.message : "Lỗi không xác định"
-    return NextResponse.json(
-      { error: `Lỗi máy chủ: ${msg}` },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

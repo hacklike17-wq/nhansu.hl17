@@ -1,27 +1,35 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { db } from "@/lib/db"
+import { requirePermission, errorResponse } from "@/lib/permission"
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  try {
+    const ctx = await requirePermission("nghiphep.edit")
+    const { id } = await params
+    const body = await req.json()
+    const action: "APPROVED" | "REJECTED" | "CANCELLED" = body.action
 
-  const { id } = await params
-  const body = await req.json()
-  const action: "APPROVED" | "REJECTED" | "CANCELLED" = body.action
+    if (!["APPROVED", "REJECTED", "CANCELLED"].includes(action))
+      return NextResponse.json({ error: "action không hợp lệ" }, { status: 400 })
 
-  if (!["APPROVED", "REJECTED", "CANCELLED"].includes(action))
-    return NextResponse.json({ error: "action không hợp lệ" }, { status: 400 })
+    const leaveRequest = await db.leaveRequest.findFirst({
+      where: { id, companyId: ctx.companyId ?? undefined },
+    })
+    if (!leaveRequest) return NextResponse.json({ error: "Không tìm thấy" }, { status: 404 })
+    if (leaveRequest.status !== "PENDING")
+      return NextResponse.json({ error: "Đã xử lý" }, { status: 409 })
 
-  const leaveRequest = await db.leaveRequest.findUnique({ where: { id } })
-  if (!leaveRequest) return NextResponse.json({ error: "Không tìm thấy" }, { status: 404 })
-  if (leaveRequest.status !== "PENDING")
-    return NextResponse.json({ error: "Đã xử lý" }, { status: 409 })
+    // Managers/admins can approve; employees can only CANCEL their own
+    if (ctx.role === "employee") {
+      if (leaveRequest.employeeId !== ctx.employeeId || action !== "CANCELLED") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+    }
 
-  const companyId = leaveRequest.companyId
+    const companyId = leaveRequest.companyId
 
   if (action === "APPROVED") {
     // Tạo DeductionEvents — 1 record/ngày trong transaction
@@ -37,7 +45,7 @@ export async function POST(
         where: { id },
         data: {
           status: "APPROVED",
-          approvedBy: session.user.id,
+          approvedBy: ctx.userId,
           approvedAt: new Date(),
         },
       })
@@ -60,7 +68,7 @@ export async function POST(
             delta: -1,
             reason: `Nghỉ phép — đơn ${id.slice(0, 8)}`,
             status: "APPROVED" as const,
-            approvedBy: session.user.id,
+            approvedBy: ctx.userId,
             approvedAt: new Date(),
           })
         }
@@ -77,7 +85,7 @@ export async function POST(
           entityType: "LeaveRequest",
           entityId: id,
           action: "APPROVED",
-          changedBy: session.user.id,
+          changedBy: ctx.userId,
           changes: { totalDays: events.length, type: leaveRequest.type },
         },
       })
@@ -89,7 +97,7 @@ export async function POST(
         where: { id },
         data: {
           status: action,
-          approvedBy: session.user.id,
+          approvedBy: ctx.userId,
           approvedAt: new Date(),
         },
       })
@@ -98,6 +106,9 @@ export async function POST(
     })
   }
 
-  const updated = await db.leaveRequest.findUnique({ where: { id } })
-  return NextResponse.json(updated)
+    const updated = await db.leaveRequest.findUnique({ where: { id } })
+    return NextResponse.json(updated)
+  } catch (e) {
+    return errorResponse(e)
+  }
 }

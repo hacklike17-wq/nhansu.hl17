@@ -1,98 +1,154 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { db } from "@/lib/db"
 import { UpdateEmployeeSchema } from "@/lib/schemas/employee"
 import bcrypt from "bcryptjs"
+import { requirePermission, requireSession, errorResponse } from "@/lib/permission"
+import { markDraftPayrollsStale } from "@/lib/services/payroll.service"
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const ctx = await requireSession()
+    const { id } = await params
 
-  const { id } = await params
-  const companyId = (session.user as any).companyId
-  const employee = await db.employee.findFirst({
-    where: { id, companyId, deletedAt: null },
-    include: { user: { select: { id: true, email: true, role: true } } },
-  })
-  if (!employee) return NextResponse.json({ error: "Not found" }, { status: 404 })
-  return NextResponse.json(employee)
+    // Employees can only read their own record
+    if (ctx.role === "employee" && ctx.employeeId !== id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
+    const employee = await db.employee.findFirst({
+      where: { id, companyId: ctx.companyId ?? undefined, deletedAt: null },
+      include: { user: { select: { id: true, email: true, role: true } } },
+    })
+    if (!employee) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    return NextResponse.json(employee)
+  } catch (e) {
+    return errorResponse(e)
+  }
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const { id } = await params
-  const companyId = (session.user as any).companyId
-
-  let body: Record<string, unknown>
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: "Request body không hợp lệ" }, { status: 400 })
-  }
+    const ctx = await requirePermission("nhanvien.edit")
+    const companyId = ctx.companyId!
+    const { id } = await params
 
-  const parsed = UpdateEmployeeSchema.safeParse(body)
-  if (!parsed.success) {
-    console.error("[PATCH /api/employees] Zod error:", JSON.stringify(parsed.error.flatten()))
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
-  }
+    let body: Record<string, unknown>
+    try {
+      body = await req.json()
+    } catch {
+      return NextResponse.json({ error: "Request body không hợp lệ" }, { status: 400 })
+    }
 
-  const data = parsed.data
+    const parsed = UpdateEmployeeSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
 
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const data = parsed.data
     const { accountPassword, ...empData } = data as any
-    const employee = await db.employee.update({
-      where: { id },
-      data: {
-        ...empData,
-        startDate: data.startDate ? new Date(data.startDate) : undefined,
-        endDate: data.endDate ? new Date(data.endDate) : undefined,
-        dob: data.dob ? new Date(data.dob) : undefined,
-      },
+
+    const existing = await db.employee.findFirst({ where: { id, companyId } })
+    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+    const emailChanged = data.email && data.email !== existing.email
+    const baseSalaryChanged = data.baseSalary !== undefined && Number(data.baseSalary) !== Number(existing.baseSalary)
+    const accountStatusChanged = data.accountStatus && data.accountStatus !== existing.accountStatus
+
+    const employee = await db.$transaction(async (tx: any) => {
+      const emp = await tx.employee.update({
+        where: { id },
+        data: {
+          ...empData,
+          startDate: data.startDate ? new Date(data.startDate) : undefined,
+          endDate: data.endDate ? new Date(data.endDate) : undefined,
+          dob: data.dob ? new Date(data.dob) : undefined,
+        },
+      })
+
+      // Sync User: email change → update linked user too (keeps login in sync)
+      if (emailChanged) {
+        await tx.user.updateMany({
+          where: { employeeId: id, companyId },
+          data: { email: data.email!, name: data.fullName ?? emp.fullName },
+        })
+      } else if (data.fullName) {
+        await tx.user.updateMany({
+          where: { employeeId: id, companyId },
+          data: { name: data.fullName },
+        })
+      }
+
+      // Password reset
+      if (accountPassword?.trim()) {
+        const hashed = await bcrypt.hash(accountPassword.trim(), 12)
+        await tx.user.updateMany({
+          where: { employeeId: id, companyId },
+          data: { password: hashed },
+        })
+      }
+
+      return emp
     })
 
-    // Update user password if provided
-    if (accountPassword?.trim()) {
-      const hashed = await bcrypt.hash(accountPassword.trim(), 12)
-      await db.user.updateMany({
-        where: { employeeId: id, companyId },
-        data: { password: hashed },
-      })
+    // If base salary changed, flag DRAFT payrolls for recalc (data consistency)
+    if (baseSalaryChanged) {
+      await markDraftPayrollsStale(companyId).catch(err =>
+        console.warn("markDraftPayrollsStale after employee update failed:", err)
+      )
     }
 
     return NextResponse.json(employee)
   } catch (error: unknown) {
-    console.error("[PATCH /api/employees] DB error:", error)
-
     if (error && typeof error === "object" && "code" in error) {
       const e = error as any
       if (e.code === "P2002") {
         return NextResponse.json({ error: "Email này đã tồn tại trong hệ thống" }, { status: 409 })
       }
     }
-
-    const msg = error instanceof Error ? error.message : "Lỗi không xác định"
-    return NextResponse.json({ error: `Lỗi máy chủ: ${msg}` }, { status: 500 })
+    return errorResponse(error)
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const { id } = await params
-
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    await db.employee.update({
-      where: { id },
-      data: { deletedAt: new Date(), status: "RESIGNED" },
+    const ctx = await requirePermission("nhanvien.delete")
+    const companyId = ctx.companyId!
+    const { id } = await params
+
+    // Verify employee belongs to the company
+    const emp = await db.employee.findFirst({ where: { id, companyId } })
+    if (!emp) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+    // Atomic soft-delete: flag employee + lock linked user so login is revoked immediately
+    await db.$transaction(async (tx: any) => {
+      await tx.employee.update({
+        where: { id },
+        data: {
+          deletedAt: new Date(),
+          status: "RESIGNED",
+          accountStatus: "LOCKED",
+          endDate: new Date(),
+        },
+      })
+      // Lock user account: clear password, the authorize() check also blocks via
+      // accountStatus === LOCKED + deletedAt guards added in auth.ts
+      await tx.user.updateMany({
+        where: { employeeId: id, companyId },
+        data: { password: null },
+      })
     })
+
     return NextResponse.json({ ok: true })
-  } catch (error: unknown) {
-    console.error("[DELETE /api/employees] DB error:", error)
-    const msg = error instanceof Error ? error.message : "Lỗi không xác định"
-    return NextResponse.json({ error: `Lỗi máy chủ: ${msg}` }, { status: 500 })
+  } catch (e) {
+    return errorResponse(e)
   }
 }
