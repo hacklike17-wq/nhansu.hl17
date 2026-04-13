@@ -3,7 +3,20 @@ import { db } from "@/lib/db"
 import { UpdateEmployeeSchema } from "@/lib/schemas/employee"
 import bcrypt from "bcryptjs"
 import { requirePermission, requireSession, errorResponse } from "@/lib/permission"
+import { hasPermission } from "@/constants/data"
 import { markDraftPayrollsStale } from "@/lib/services/payroll.service"
+
+// Fields an employee may update on their OWN record without `nhanvien.edit`.
+// System fields (email, dob, idCard, taxCode, bhxhCode, salary, department,
+// position, contract, status, ...) remain admin-only.
+const SELF_EDITABLE_FIELDS = new Set([
+  "fullName",
+  "phone",
+  "gender",
+  "address",
+  "bankName",
+  "bankAccount",
+])
 
 export async function GET(
   _req: NextRequest,
@@ -34,15 +47,29 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const ctx = await requirePermission("nhanvien.edit")
-    const companyId = ctx.companyId!
+    const ctx = await requireSession()
     const { id } = await params
+
+    // An employee may always update their own record (whitelisted fields
+    // below). Anyone else must hold `nhanvien.edit`.
+    const isSelfEdit = ctx.role === "employee" && ctx.employeeId === id
+    if (!isSelfEdit && !hasPermission(ctx.permissions, "nhanvien.edit")) {
+      return NextResponse.json({ error: "Forbidden: missing nhanvien.edit" }, { status: 403 })
+    }
+
+    const companyId = ctx.companyId!
 
     let body: Record<string, unknown>
     try {
       body = await req.json()
     } catch {
       return NextResponse.json({ error: "Request body không hợp lệ" }, { status: 400 })
+    }
+
+    if (isSelfEdit) {
+      body = Object.fromEntries(
+        Object.entries(body).filter(([k]) => SELF_EDITABLE_FIELDS.has(k))
+      )
     }
 
     const parsed = UpdateEmployeeSchema.safeParse(body)
