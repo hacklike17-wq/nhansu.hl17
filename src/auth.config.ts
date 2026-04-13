@@ -1,5 +1,5 @@
 import type { NextAuthConfig } from "next-auth"
-import { ROUTE_PERMISSION, hasPermission } from "@/constants/data"
+import { ROUTE_PERMISSION, hasPermission, normalizeRole } from "@/constants/data"
 
 export const authConfig = {
   pages: {
@@ -34,11 +34,14 @@ export const authConfig = {
         token.employeeId = (user as any).employeeId ?? null
         token.companyId = (user as any).companyId ?? null
       }
+      // Normalize role every read — handles cached JWTs minted with legacy
+      // role names (boss_admin/hr_manager/accountant) after the RBAC rewrite.
+      token.role = normalizeRole(token.role as string)
       return token
     },
     session({ session, token }) {
       session.user.id = token.id as string
-      session.user.role = (token.role as string) ?? "employee"
+      session.user.role = normalizeRole(token.role as string)
       ;(session.user as any).permissions = token.permissions ?? []
       ;(session.user as any).employeeId = token.employeeId ?? null
       ;(session.user as any).companyId = token.companyId ?? null
