@@ -3,6 +3,7 @@ import { evalFormula, buildDependencyGraph, topologicalSort, extractVars } from 
 import { calcPIT, calcPITFallback } from "@/lib/payroll/pit"
 import { calcEmployeeInsurance } from "@/lib/payroll/insurance"
 import { checkPayrollAnomalies, type Anomaly } from "@/lib/payroll/anomaly"
+import { getInsuranceRates, getPITBrackets } from "@/lib/payroll/rates-loader"
 
 // Re-export so existing `from "@/lib/services/payroll.service"` imports
 // of the Anomaly type / checkPayrollAnomalies function keep working.
@@ -29,43 +30,9 @@ export interface FormulaError {
 /** Formula columns skipped by the formula engine (computed explicitly from calcMode) */
 const SKIP_FORMULA_KEYS = new Set(["tong_thuc_nhan"])
 
-// ─── Insurance & PIT helpers ──────────────────────────────────────────────────
-
-/** Lấy InsuranceRate hiện hành */
-async function getInsuranceRates(companyId: string) {
-  const now = new Date()
-  const rates = await db.insuranceRate.findMany({
-    where: {
-      companyId,
-      validFrom: { lte: now },
-      OR: [{ validTo: null }, { validTo: { gte: now } }],
-    },
-  })
-  const bhxh = rates.find((r: any) => r.type === "BHXH")
-  const bhyt = rates.find((r: any) => r.type === "BHYT")
-  const bhtn = rates.find((r: any) => r.type === "BHTN")
-  return {
-    bhxh: toNum(bhxh?.employeeRate) || 0.08,
-    bhyt: toNum(bhyt?.employeeRate) || 0.015,
-    bhtn: toNum(bhtn?.employeeRate) || 0.01,
-  }
-}
-
-/** Lấy PITBrackets hiện hành, sort theo minIncome tăng dần */
-async function getPITBrackets(companyId: string) {
-  const now = new Date()
-  const brackets = await db.pITBracket.findMany({
-    where: {
-      companyId,
-      validFrom: { lte: now },
-      OR: [{ validTo: null }, { validTo: { gte: now } }],
-    },
-    orderBy: { minIncome: "asc" },
-  })
-  return brackets
-}
-
-// calcPIT / calcPITFallback moved to src/lib/payroll/pit.ts (Phase 5a).
+// getInsuranceRates / getPITBrackets moved to
+//   src/lib/payroll/rates-loader.ts (Phase 5d).
+// calcPIT / calcPITFallback          moved to src/lib/payroll/pit.ts (Phase 5a).
 
 // ─── Result type ──────────────────────────────────────────────────────────────
 
