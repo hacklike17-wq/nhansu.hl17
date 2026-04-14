@@ -1,5 +1,10 @@
 import OpenAI from "openai"
 
+export type ChatMessage = {
+  role: "user" | "assistant"
+  content: string
+}
+
 /**
  * Phase 1 adapter: one-shot chat call used by the test-config endpoint AND
  * (later) the real chat endpoint. Caller is responsible for assembling the
@@ -28,6 +33,40 @@ export async function openaiTestChat(
       { role: "user", content: userMessage },
     ],
     max_completion_tokens: 600,
+  })
+
+  return {
+    text: res.choices[0]?.message?.content?.trim() ?? "",
+    inputTokens: res.usage?.prompt_tokens ?? 0,
+    outputTokens: res.usage?.completion_tokens ?? 0,
+  }
+}
+
+/**
+ * Multi-turn chat call. Takes a full conversation history plus the current
+ * user message, prepends the system prompt, and returns the assistant's
+ * reply + token usage. Phase 2.1: no tool calling yet — the AI answers
+ * purely from the system prompt + rules + its own knowledge.
+ */
+export async function openaiChat(
+  apiKey: string,
+  model: string,
+  systemPrompt: string,
+  history: ChatMessage[]
+): Promise<{
+  text: string
+  inputTokens: number
+  outputTokens: number
+}> {
+  const client = new OpenAI({ apiKey })
+
+  const res = await client.chat.completions.create({
+    model,
+    messages: [
+      { role: "system", content: systemPrompt },
+      ...history.map(m => ({ role: m.role, content: m.content })),
+    ],
+    max_completion_tokens: 800,
   })
 
   return {

@@ -33,3 +33,12 @@ export const TestAiChatSchema = z
   .strict()
 
 export type TestAiChatInput = z.infer<typeof TestAiChatSchema>
+
+export const ChatMessageSchema = z
+  .object({
+    conversationId: z.string().min(1).optional(),
+    message: z.string().min(1).max(4000),
+  })
+  .strict()
+
+export type ChatMessageInput = z.infer<typeof ChatMessageSchema>

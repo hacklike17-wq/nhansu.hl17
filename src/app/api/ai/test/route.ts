@@ -51,8 +51,19 @@ function buildSystemPrompt(
   }
 
   parts.push(
-    "LƯU Ý (Phase 1): Bạn CHƯA có công cụ truy vấn cơ sở dữ liệu thật. " +
-      "Nếu user hỏi về số liệu cá nhân (lương, công, KPI của họ), hãy nói rõ bạn chưa truy cập được dữ liệu và đề nghị quay lại sau khi tính năng chat được bật."
+    [
+      "LƯU Ý VỀ PHẠM VI TRẢ LỜI (Phase 2.1):",
+      "",
+      "1) Câu hỏi về QUY TẮC / CÔNG THỨC / BẢNG (mức phạt, điểm trừ, bảng quỹ thưởng, điều kiện KPI, phúc lợi, công tác phí, thời gian làm việc, quy trình kỷ luật…):",
+      "   → TRẢ LỜI TRỰC TIẾP dựa vào NỘI QUY ở trên. Trích dẫn chính xác con số trong nội quy.",
+      "   → Nếu user hỏi dạng 'nếu X thì Y thế nào?' → thực hiện phép tính theo đúng công thức trong nội quy và đưa ra kết quả cụ thể kèm cách tính.",
+      "   → Nếu dữ kiện đầu vào chưa đủ (ví dụ chưa biết điểm hiện tại của user), hãy nêu ra các trường hợp theo từng mức trong bảng, KHÔNG được trả lời 'chưa có dữ liệu'.",
+      "",
+      "2) Câu hỏi về SỐ LIỆU THỰC TẠI TỪNG NGƯỜI (lương tháng X của họ, tổng công đi được, điểm KPI đã tích luỹ, số ngày phép còn, chi tiết vi phạm của họ…):",
+      "   → Bạn CHƯA có công cụ truy vấn cơ sở dữ liệu, nói ngắn gọn: 'Tính năng tra cứu dữ liệu cá nhân đang được phát triển (Phase 2.2). Hiện tại tôi chỉ có thể giải thích quy tắc.'",
+      "",
+      "3) KHÔNG được từ chối trả lời chỉ vì câu hỏi có từ 'quỹ thưởng', 'lương', 'điểm', 'công'. Chỉ từ chối khi câu hỏi YÊU CẦU tra số liệu cụ thể của cá nhân đó.",
+    ].join("\n")
   )
 
   return parts.join("\n\n")

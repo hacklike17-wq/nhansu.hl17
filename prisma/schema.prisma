@@ -484,6 +484,38 @@ model AiConfig {
   @@map("ai_configs")
 }
 
+// One chat thread between a user and the assistant. `role` is the scope used
+// when the conversation was started; prompt + tools are chosen from it.
+model AiConversation {
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String
+  role      String   // admin | manager | employee
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages AiMessage[]
+
+  @@index([companyId, userId, updatedAt])
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String   // user | assistant | system
+  content        String
+  inputTokens    Int      @default(0)
+  outputTokens   Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("ai_messages")
+}
+
 // ──────────────────────────────────────────────────────────────
 // FINANCE
 // ──────────────────────────────────────────────────────────────
