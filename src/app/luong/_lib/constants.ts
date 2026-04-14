@@ -1,18 +1,24 @@
 /**
  * Constants for the Lương & Thưởng page.
  * Extracted from page.tsx for readability — no logic changes.
+ *
+ * PayrollStatus + STATUS_MAP now live in src/constants/payroll-status.ts as
+ * the single source of truth (Phase 1 refactor). This module re-exports them
+ * for backwards compatibility with existing import paths.
  */
+import { PAYROLL_STATUS_META, type PayrollStatus } from "@/constants/payroll-status"
 
-export type PayrollStatus = 'DRAFT' | 'PENDING' | 'APPROVED' | 'LOCKED' | 'PAID'
+export type { PayrollStatus }
 
-/** Status badge config — flow: admin sends → employee confirms/rejects */
-export const STATUS_MAP: Record<string, { label: string; cls: string }> = {
-  DRAFT:    { label: 'Nháp',              cls: 'bg-gray-100 text-gray-600' },
-  PENDING:  { label: 'Chờ NV xác nhận',   cls: 'bg-amber-100 text-amber-700' },
-  APPROVED: { label: 'Đã duyệt',          cls: 'bg-green-100 text-green-700' }, // legacy rows
-  LOCKED:   { label: 'Đã xác nhận',       cls: 'bg-green-100 text-green-700' },
-  PAID:     { label: 'Đã thanh toán',     cls: 'bg-blue-100 text-blue-700' },
-}
+/**
+ * Status badge config — flow: admin sends → employee confirms/rejects.
+ * Derived from PAYROLL_STATUS_META so any future label/class change happens
+ * in exactly one place.
+ */
+export const STATUS_MAP: Record<string, { label: string; cls: string }> =
+  Object.fromEntries(
+    Object.entries(PAYROLL_STATUS_META).map(([k, m]) => [k, { label: m.label, cls: m.cls }])
+  )
 
 /** Map salary column key → payroll record field */
 export const COL_FIELD: Record<string, string> = {

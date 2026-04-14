@@ -1,5 +1,6 @@
 import { db } from "@/lib/db"
 import { AuthError } from "@/lib/permission"
+import { PAYROLL_STATUS_META } from "@/constants/payroll-status"
 
 /**
  * Shared guard: reject chamcong mutations when the underlying Payroll is
@@ -15,15 +16,8 @@ import { AuthError } from "@/lib/permission"
  * payrolls, so previously the mutation "succeeded" but had no effect on
  * salary — a classic footgun. This guard makes the rejection explicit.
  *
- * Status labels for the user-facing error (DRAFT → PENDING → LOCKED → PAID).
+ * User-facing status labels live in PAYROLL_STATUS_META (Phase 1 refactor).
  */
-const STATUS_LABEL: Record<string, string> = {
-  DRAFT:    "Nháp",
-  PENDING:  "Chờ nhân viên xác nhận",
-  APPROVED: "Đã duyệt",
-  LOCKED:   "Đã xác nhận",
-  PAID:     "Đã thanh toán",
-}
 
 /**
  * Throws AuthError(409) if the employee's payroll for the month containing
@@ -45,7 +39,7 @@ export async function requireDraftPayroll(
     select: { status: true },
   })
   if (payroll && payroll.status !== "DRAFT") {
-    const label = STATUS_LABEL[payroll.status] ?? payroll.status
+    const label = PAYROLL_STATUS_META[payroll.status]?.longLabel ?? payroll.status
     throw new AuthError(
       `Không thể sửa — bảng lương tháng này đang ở trạng thái "${label}"`,
       409
