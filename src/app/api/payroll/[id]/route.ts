@@ -3,6 +3,8 @@ import { db } from "@/lib/db"
 import { UpdatePayrollStatusSchema } from "@/lib/schemas/payroll"
 import { buildPayrollSnapshot } from "@/lib/services/payroll.service"
 import { requireRole, requireSession, errorResponse } from "@/lib/permission"
+import { canTransition, type PayrollRole } from "@/lib/payroll/state-machine"
+import type { PayrollStatus } from "@/constants/payroll-status"
 
 export async function DELETE(
   _req: NextRequest,
@@ -25,21 +27,10 @@ export async function DELETE(
   }
 }
 
-// Flow: admin sends payroll → employee confirms/rejects
-//  - DRAFT → PENDING:  admin/manager sends payroll to employee for confirmation
-//  - PENDING → LOCKED: employee confirms amount is correct (locks immutably)
-//  - PENDING → DRAFT:  employee rejects (with note) OR admin cancels the send
-//  - LOCKED → PAID:    admin marks paid
-// Legacy APPROVED state is kept as a transition target for backwards compat
-// with any rows that were already in that state, but is no longer reachable
-// through the new flow.
-const VALID_TRANSITIONS: Record<string, string[]> = {
-  DRAFT:    ["PENDING"],
-  PENDING:  ["LOCKED", "DRAFT"],
-  APPROVED: ["LOCKED"], // legacy bridge — existing APPROVED rows can still be locked
-  LOCKED:   ["PAID"],
-  PAID:     [],
-}
+// Transition + role gates live in src/lib/payroll/state-machine.ts —
+// see canTransition() below. Runtime guards (Phase 09 anomaly check, Phase
+// 07 needsRecalc flag) stay in this handler because they depend on data
+// attached to the row, not the state graph itself.
 
 export async function PATCH(
   req: NextRequest,
@@ -60,44 +51,23 @@ export async function PATCH(
     const payroll = await db.payroll.findFirst({ where: { id, companyId: ctx.companyId } })
     if (!payroll) return NextResponse.json({ error: "Không tìm thấy" }, { status: 404 })
 
-    // Role-gated transitions (admin-sends, employee-confirms flow):
-    //  - Employee: own payroll only — confirm (PENDING → LOCKED) or reject (PENDING → DRAFT)
-    //  - Manager: DRAFT → PENDING (send), PENDING → DRAFT (cancel send)
-    //  - Admin: all of the above + LOCKED → PAID
-    if (ctx.role === "employee") {
-      if (payroll.employeeId !== ctx.employeeId) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-      }
-      const employeeAllowed: Array<[string, string]> = [
-        ["PENDING", "LOCKED"], // xác nhận đúng
-        ["PENDING", "DRAFT"],  // từ chối với ghi chú
-      ]
-      if (!employeeAllowed.some(([f, t]) => f === payroll.status && t === status)) {
-        return NextResponse.json(
-          { error: "Nhân viên chỉ được xác nhận hoặc từ chối bảng lương đang chờ xác nhận" },
-          { status: 403 }
-        )
-      }
-    } else if (ctx.role === "manager") {
-      const managerAllowed: Array<[string, string]> = [
-        ["DRAFT", "PENDING"],   // gửi nhân viên xác nhận
-        ["PENDING", "DRAFT"],   // huỷ gửi
-      ]
-      if (!managerAllowed.some(([f, t]) => f === payroll.status && t === status)) {
-        return NextResponse.json({ error: "Chỉ Admin mới được đánh dấu đã trả" }, { status: 403 })
-      }
-    } else if (ctx.role === "admin") {
-      // All transitions allowed by VALID_TRANSITIONS below
-    } else {
+    // Cross-tenant / cross-employee guard (employee can only touch own row).
+    if (ctx.role === "employee" && payroll.employeeId !== ctx.employeeId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    if (ctx.role !== "employee" && ctx.role !== "manager" && ctx.role !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
-    const allowed = VALID_TRANSITIONS[payroll.status] ?? []
-    if (!allowed.includes(status)) {
-      return NextResponse.json(
-        { error: `Không thể chuyển từ ${payroll.status} sang ${status}` },
-        { status: 400 }
-      )
+    // Role-gated transitions (admin-sends, employee-confirms flow) — extracted
+    // into src/lib/payroll/state-machine.ts (Phase 4 refactor).
+    const check = canTransition(
+      payroll.status as PayrollStatus,
+      status as PayrollStatus,
+      ctx.role as PayrollRole
+    )
+    if (!check.ok) {
+      return NextResponse.json({ error: check.reason }, { status: check.status })
     }
 
   // Phase 09: DRAFT → PENDING blocked if error-level anomalies exist
