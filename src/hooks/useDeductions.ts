@@ -1,5 +1,6 @@
 'use client'
 import useSWR from "swr"
+import { apiFetch } from "@/lib/api-client"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -27,21 +28,15 @@ export async function createDeduction(payload: {
   delta: number
   reason: string
 }) {
-  const res = await fetch("/api/deductions", {
+  return apiFetch("/api/deductions", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
 }
 
 export async function approveDeduction(id: string, action: "APPROVED" | "REJECTED") {
-  const res = await fetch(`/api/deductions/${id}/approve`, {
+  return apiFetch(`/api/deductions/${id}/approve`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action }),
   })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
 }

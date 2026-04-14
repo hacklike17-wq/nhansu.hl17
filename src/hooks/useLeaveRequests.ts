@@ -1,5 +1,6 @@
 'use client'
 import useSWR from "swr"
+import { apiFetch } from "@/lib/api-client"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -27,24 +28,18 @@ export async function createLeaveRequest(payload: {
   totalDays: number
   reason?: string
 }) {
-  const res = await fetch("/api/leave-requests", {
+  return apiFetch("/api/leave-requests", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
 }
 
 export async function approveLeaveRequest(
   id: string,
   action: "APPROVED" | "REJECTED" | "CANCELLED"
 ) {
-  const res = await fetch(`/api/leave-requests/${id}/approve`, {
+  return apiFetch(`/api/leave-requests/${id}/approve`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action }),
   })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
 }

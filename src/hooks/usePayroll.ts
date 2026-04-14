@@ -1,5 +1,6 @@
 'use client'
 import useSWR from "swr"
+import { apiFetch } from "@/lib/api-client"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -24,13 +25,13 @@ export function usePayroll(params: { month?: string; employeeId?: string }) {
 }
 
 export async function generatePayroll(month: string, employeeIds?: string[]) {
-  const res = await fetch("/api/payroll", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ month, employeeIds }),
-  })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ ok?: boolean; succeeded?: number; failed?: number }>(
+    "/api/payroll",
+    {
+      method: "POST",
+      body: JSON.stringify({ month, employeeIds }),
+    }
+  )
 }
 
 export async function updatePayrollStatus(
@@ -38,30 +39,21 @@ export async function updatePayrollStatus(
   status: "DRAFT" | "PENDING" | "APPROVED" | "LOCKED" | "PAID",
   note?: string
 ) {
-  const res = await fetch(`/api/payroll/${id}`, {
+  return apiFetch(`/api/payroll/${id}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status, note }),
   })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
 }
 
 /** Phase 04: Generate payroll only for active employees missing a row for this month */
 export async function generateMissingPayroll(month: string) {
-  const res = await fetch("/api/payroll", {
+  return apiFetch<{ ok: boolean; succeeded: number }>("/api/payroll", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ month, missingOnly: true }),
   })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
 }
 
 /** Phase 04: Delete a DRAFT payroll row */
 export async function deletePayroll(id: string) {
-  const res = await fetch(`/api/payroll/${id}`, { method: "DELETE" })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error ?? "Lỗi khi xóa bản lương")
-  return data
+  return apiFetch(`/api/payroll/${id}`, { method: "DELETE" })
 }

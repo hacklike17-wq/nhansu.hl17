@@ -1,4 +1,5 @@
 import useSWR from 'swr'
+import { apiFetch } from "@/lib/api-client"
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -27,11 +28,8 @@ export async function upsertOvertimeEntry(payload: {
   hours: number
   note?: string
 }) {
-  const res = await fetch('/api/overtime', {
+  return apiFetch('/api/overtime', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
 }

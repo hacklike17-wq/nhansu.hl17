@@ -1,5 +1,6 @@
 'use client'
 import useSWR from "swr"
+import { apiFetch } from "@/lib/api-client"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -25,21 +26,15 @@ export async function upsertWorkUnit(payload: {
   units: number
   note?: string
 }) {
-  const res = await fetch("/api/work-units", {
+  return apiFetch("/api/work-units", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
 }
 
 /** Phase 04: Delete all WorkUnits for an employee in a given month */
 export async function deleteEmployeeMonth(employeeId: string, month: string) {
-  const res = await fetch(`/api/work-units?employeeId=${employeeId}&month=${month}`, {
+  return apiFetch(`/api/work-units?employeeId=${employeeId}&month=${month}`, {
     method: "DELETE",
   })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error ?? "Lỗi khi xóa")
-  return data
 }

@@ -1,5 +1,6 @@
 'use client'
 import useSWR from "swr"
+import { apiFetch } from "@/lib/api-client"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -25,11 +26,8 @@ export async function upsertKpiViolation(payload: {
   types: string[]
   note?: string
 }) {
-  const res = await fetch("/api/kpi-violations", {
+  return apiFetch("/api/kpi-violations", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
 }
