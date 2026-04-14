@@ -237,14 +237,14 @@ export default function LuongPage() {
     <PageShell breadcrumb="Nhân sự" title="Lương & Thưởng">
 
       {/* ── Header toolbar ── */}
-      <div className="flex items-center justify-between gap-4 mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
           <label className="text-xs font-medium text-gray-500">Tháng</label>
           <input type="month" value={month} onChange={e => setMonth(e.target.value)}
             className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
         </div>
         {canEdit && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {recalcMsg && (
               <span className="text-[11px] text-green-600 font-medium">{recalcMsg}</span>
             )}
@@ -306,7 +306,7 @@ export default function LuongPage() {
 
       {/* ── Manager: Summary cards ── */}
       {isManager && payrolls.length > 0 && (
-        <div className="grid grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 mb-4">
           <div className="bg-white border border-gray-200 rounded-2xl p-4">
             <div className="text-xs text-gray-400 mb-1">Tổng thực nhận</div>
             <div className="text-2xl font-bold text-blue-600">{fmtVND(totalNet)}</div>
@@ -555,8 +555,8 @@ export default function LuongPage() {
       )}
       {/* ── Phase 07b: Snapshot viewer modal ── */}
       {snapshotModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setSnapshotModal(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-[480px] max-h-[80vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 md:p-4" onClick={() => setSnapshotModal(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-[480px] max-h-[90vh] md:max-h-[80vh] overflow-y-auto p-4 md:p-5" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-semibold text-gray-900">Snapshot tính lương</h3>

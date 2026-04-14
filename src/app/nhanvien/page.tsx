@@ -242,7 +242,7 @@ function EmployeeSelfProfile({ empId }: { empId: string }) {
         </div>
 
         <div className="md:w-2/3">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
             {ALL_FIELDS.filter(f => visibleFields.has(f.key)).map(f => {
               const canEdit = editMode && SELF_EDITABLE_KEYS.has(f.key)
               const adminOnly = editMode && !SELF_EDITABLE_KEYS.has(f.key)
@@ -400,7 +400,7 @@ export default function NhanVienPage() {
   return (
     <PageShell breadcrumb="Nhân sự" title="Nhân viên">
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {stats.map(s => (
           <div key={s.label} className="bg-white border border-gray-200 rounded-xl p-4">
             <div className="text-[11px] text-gray-500 font-medium">{s.label}</div>
@@ -412,8 +412,8 @@ export default function NhanVienPage() {
       {/* Table Card */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         {/* Toolbar */}
-        <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3">
-          <div className="relative flex-1 max-w-xs">
+        <div className="px-3 md:px-4 py-3 border-b border-gray-100 flex flex-wrap items-center gap-2 md:gap-3">
+          <div className="relative flex-1 min-w-[180px] md:max-w-xs">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               value={search} onChange={e => setSearch(e.target.value)}
@@ -429,14 +429,14 @@ export default function NhanVienPage() {
             <option value="">Tất cả trạng thái</option>
             {Object.entries(STATUS_MAP).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="md:ml-auto flex items-center gap-2">
             <button
               onClick={() => setShowColPicker(v => !v)}
-              className="px-3 py-2 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 font-medium"
+              className="hidden md:inline-flex px-3 py-2 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 font-medium"
             >
               Tuỳ chỉnh hiển thị
             </button>
-            <button className="flex items-center gap-1.5 px-3 py-2 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">
+            <button className="hidden md:flex items-center gap-1.5 px-3 py-2 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">
               <Download size={13} /> Xuất Excel
             </button>
           </div>
@@ -464,8 +464,8 @@ export default function NhanVienPage() {
           </div>
         )}
 
-        {/* Table */}
-        <div className="overflow-x-auto">
+        {/* Table — desktop */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
@@ -500,6 +500,42 @@ export default function NhanVienPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Card view — mobile */}
+        <div className="md:hidden divide-y divide-gray-100">
+          {isLoading ? (
+            <div className="px-4 py-8 text-center text-xs text-gray-400">Đang tải...</div>
+          ) : filtered.length === 0 ? (
+            <div className="px-4 py-8 text-center text-xs text-gray-400">Không tìm thấy nhân viên nào</div>
+          ) : filtered.map((emp: any) => (
+            <button
+              key={emp.id}
+              onClick={() => setSelectedId(emp.id)}
+              className="w-full text-left px-4 py-3 active:bg-blue-50 transition"
+            >
+              <div className="flex items-start gap-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0 ${avatarColor(emp.id)}`}>
+                  {getInitials(emp.fullName)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <div className="font-semibold text-sm text-gray-900 truncate">{emp.fullName}</div>
+                    <span className="text-[10px] text-gray-400 font-mono shrink-0">{emp.code ?? '—'}</span>
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-0.5 truncate">
+                    {emp.position || '—'} · {emp.department || '—'}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${STATUS_MAP[emp.status]?.cls ?? ''}`}>
+                      {STATUS_MAP[emp.status]?.label ?? emp.status}
+                    </span>
+                    {emp.phone && <span className="text-[10px] text-gray-400">{emp.phone}</span>}
+                  </div>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
         <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500">
           <span>Hiển thị {filtered.length} / {employees.length} nhân viên</span>
         </div>
@@ -507,8 +543,8 @@ export default function NhanVienPage() {
 
       {/* ═══ Detail Modal (view-only) ═══ */}
       {detail && (
-        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={() => setSelectedId(null)}>
-          <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-[560px] max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-2 md:p-4" onClick={() => setSelectedId(null)}>
+          <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-[560px] max-h-[90vh] md:max-h-[80vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
               <div className={`w-14 h-14 rounded-full flex items-center justify-center text-lg font-bold text-white shrink-0 ${avatarColor(detail.id)}`}>
                 {getInitials(detail.fullName)}
@@ -519,7 +555,7 @@ export default function NhanVienPage() {
               </div>
               <button onClick={() => setSelectedId(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
             </div>
-            <div className="p-6 grid grid-cols-2 gap-x-6 gap-y-3 text-xs">
+            <div className="p-4 md:p-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-xs">
               {([
                 ['Email', detail.email],
                 ['Điện thoại', detail.phone || '—'],
