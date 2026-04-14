@@ -54,7 +54,8 @@ export async function GET(_req: NextRequest) {
         position: true,
         department: true,
       },
-      orderBy: [{ department: "asc" }, { fullName: "asc" }],
+      // Match /api/payroll order so dashboard rows line up with the payroll table
+      orderBy: { createdAt: "asc" },
     })
     const employeeIds = employees.map(e => e.id)
 
@@ -70,7 +71,7 @@ export async function GET(_req: NextRequest) {
       )
     }
 
-    const [todayWorkUnits, todayUnpaidLeaves, monthWorkUnits, kpiCounts, payrolls] = await Promise.all([
+    const [todayWorkUnits, todayUnpaidLeaves, monthWorkUnits, kpiRows, payrolls] = await Promise.all([
       db.workUnit.findMany({
         where: { companyId, employeeId: { in: employeeIds }, date: todayUTC },
         select: { employeeId: true, units: true },
@@ -95,14 +96,17 @@ export async function GET(_req: NextRequest) {
         },
         _sum: { units: true },
       }),
-      db.kpiViolation.groupBy({
-        by: ["employeeId"],
+      // KpiViolation.types is a String[] — 1 row can hold multiple violation codes
+      // (e.g. ['NP','DM'] = late + early leave on the same day). We must sum the
+      // total type count per employee, matching /api/dashboard/attendance-kpi which
+      // is the single source of truth for KPI violation counts.
+      db.kpiViolation.findMany({
         where: {
           companyId,
           employeeId: { in: employeeIds },
           date: { gte: monthStart, lte: monthEndDay },
         },
-        _count: { _all: true },
+        select: { employeeId: true, types: true },
       }),
       db.payroll.findMany({
         where: { companyId, month: monthStart, employeeId: { in: employeeIds } },
@@ -123,8 +127,9 @@ export async function GET(_req: NextRequest) {
     }
 
     const kpiCountMap = new Map<string, number>()
-    for (const r of kpiCounts) {
-      kpiCountMap.set(r.employeeId, r._count._all)
+    for (const r of kpiRows) {
+      const prev = kpiCountMap.get(r.employeeId) ?? 0
+      kpiCountMap.set(r.employeeId, prev + (r.types?.length ?? 0))
     }
 
     const payrollMap = new Map<string, string>()

@@ -137,7 +137,7 @@ export default function ManagerTeamTable() {
 
                     <td className="px-3 py-2.5">
                       <div className="text-[11px] tabular-nums text-gray-700 mb-1">
-                        {row.monthWorkUnits.toFixed(0)} / {row.monthWorkdaysExpected}
+                        {row.monthWorkUnits} / {row.monthWorkdaysExpected}
                       </div>
                       <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
                         <div
