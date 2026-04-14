@@ -11,7 +11,7 @@ export default function PageShell({ breadcrumb, title, children }: PageShellProp
   return (
     <>
       <Topbar breadcrumb={breadcrumb} title={title} />
-      <main className="flex-1 overflow-y-auto p-7 space-y-4">
+      <main className="flex-1 overflow-y-auto p-3 md:p-7 space-y-4">
         {children}
       </main>
     </>
