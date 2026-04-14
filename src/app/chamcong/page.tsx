@@ -21,6 +21,7 @@ import {
   KPI_TYPES,
 } from './_lib/chamcong-helpers'
 import LogDrawer from './_components/LogDrawer'
+import CellEditModal from './_components/CellEditModal'
 
 /* ═════════════════════════════════════════════════════
    SHARED TABLE CHROME — fixed layout để thẳng cột
@@ -176,22 +177,32 @@ export default function ChamCongPage() {
   }
 
   /* ══════════════ TABLE 1: CÔNG SỐ ══════════════ */
-  type AttEdit = { empId: string; empName: string; date: string }
+  // Modal form state (val, note) moved into CellEditModal (Phase 6b). Parent
+  // now stores the initial seed values alongside the cell identity so they
+  // only need to be computed once — at openAttEdit time.
+  type AttEdit = {
+    empId: string
+    empName: string
+    date: string
+    initialVal: number
+    initialNote: string
+  }
   const [attEdit, setAttEdit] = useState<AttEdit | null>(null)
-  const [attVal,  setAttVal]  = useState<number>(1.0)
-  const [attNote, setAttNote] = useState<string>('')
-  const [saving,  setSaving]  = useState(false)
-  const QUICK = [0, 0.5, 1.0, 1.5, 2.0]
+  const [saving, setSaving] = useState(false)
 
   function openAttEdit(empId: string, empName: string, date: string) {
     if (!isManager) return
     const existing = attMap[`${empId}|${date}`]
-    setAttVal(existing?.units ?? 1.0)
-    setAttNote(existing?.note ?? '')
     setSaveError(null)
-    setAttEdit({ empId, empName, date })
+    setAttEdit({
+      empId,
+      empName,
+      date,
+      initialVal: existing?.units ?? 1.0,
+      initialNote: existing?.note ?? '',
+    })
   }
-  async function saveAtt() {
+  async function saveAtt(val: number, note: string) {
     if (!attEdit) return
     setSaving(true)
     setSaveError(null)
@@ -199,8 +210,8 @@ export default function ChamCongPage() {
       await upsertWorkUnit({
         employeeId: attEdit.empId,
         date: attEdit.date,
-        units: attVal,
-        note: attNote.trim() || undefined,
+        units: val,
+        note: note.trim() || undefined,
       })
       await mutateWU()
       setAttEdit(null)
@@ -718,57 +729,18 @@ export default function ChamCongPage() {
 
       </div>{/* /max-w-screen-2xl */}
 
-      {/* ══════════════════════════════════════════
-          MODAL: EDIT CÔNG SỐ
-          ═════════════════════════��════════════════ */}
+      {/* MODAL: EDIT CÔNG SỐ — extracted to _components/CellEditModal (Phase 6b) */}
       {attEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3" onClick={() => setAttEdit(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-[288px] p-5" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">{attEdit.empName}</p>
-                <p className="text-xs text-gray-400">{attEdit.date} · Công số</p>
-              </div>
-              <button onClick={() => setAttEdit(null)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
-            </div>
-            <p className="text-[11px] font-medium text-gray-500 mb-2">Chọn nhanh</p>
-            <div className="flex gap-2 mb-4">
-              {QUICK.map(v => (
-                <button key={v} onClick={() => setAttVal(v)}
-                  className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${attVal === v ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:border-blue-400'}`}>
-                  {v === 0 ? '0' : v === 0.5 ? '½' : v}
-                </button>
-              ))}
-            </div>
-            <p className="text-[11px] font-medium text-gray-500 mb-1.5">Tùy chỉnh</p>
-            <input type="number" step={0.25} min={0} max={3} value={attVal}
-              onChange={e => setAttVal(parseFloat(e.target.value) || 0)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 mb-4" />
-            <p className="text-[11px] font-medium text-gray-500 mb-1.5">
-              Ghi chú <span className="text-gray-300 font-normal">(tuỳ chọn)</span>
-            </p>
-            <textarea
-              value={attNote}
-              onChange={e => setAttNote(e.target.value)}
-              rows={2}
-              placeholder="VD: nửa ngày sáng, làm bù ngày T2..."
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 mb-4 resize-none"
-              maxLength={200}
-            />
-            {saveError && (
-              <div className="mb-3 flex items-start gap-2 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-[11px]">
-                <AlertTriangle size={13} className="shrink-0 mt-0.5"/>
-                <span className="leading-relaxed">{saveError}</span>
-              </div>
-            )}
-            <div className="flex gap-2">
-              <button onClick={() => { setAttEdit(null); setSaveError(null) }} className="flex-1 py-2 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">Đóng</button>
-              <button onClick={saveAtt} disabled={saving} className="flex-1 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60">
-                {saving ? 'Đang lưu...' : 'Lưu'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <CellEditModal
+          empName={attEdit.empName}
+          date={attEdit.date}
+          initialVal={attEdit.initialVal}
+          initialNote={attEdit.initialNote}
+          saving={saving}
+          saveError={saveError}
+          onClose={() => { setAttEdit(null); setSaveError(null) }}
+          onSave={saveAtt}
+        />
       )}
 
       {/* ══════════════════════════════════════════
