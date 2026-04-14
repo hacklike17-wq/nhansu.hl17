@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requirePermission, errorResponse } from "@/lib/permission"
+import { lockedEmployeeIdsForMonth } from "@/lib/chamcong-guard"
 
 /**
  * GET /api/dashboard/manager-overview
@@ -118,20 +119,28 @@ export async function GET(_req: NextRequest) {
     }
 
     // ── Action queue ──────────────────────────────────────────────
-    // 1) Missing attendance this week = (employees × week workdays passed) − recorded WorkUnits this week
+    // 1) Missing attendance this week = (DRAFT employees × week workdays) − recorded WorkUnits.
+    //    Exclude employees whose current-month payroll is no longer DRAFT —
+    //    chamcong-guard blocks any mutation there, so the missing row is NOT
+    //    actionable and shouldn't appear in the manager action queue.
     let missingAttendanceCount = 0
     if (employeeIds.length > 0 && weekDays.length > 0) {
-      const weekStart = weekDays[0]
-      const weekEnd = weekDays[weekDays.length - 1]
-      const recorded = await db.workUnit.count({
-        where: {
-          companyId,
-          employeeId: { in: employeeIds },
-          date: { gte: weekStart, lte: weekEnd },
-        },
-      })
-      const expected = employeeIds.length * weekDays.length
-      missingAttendanceCount = Math.max(0, expected - recorded)
+      const lockedIds = await lockedEmployeeIdsForMonth(companyId, monthStart, employeeIds)
+      const draftEmployeeIds = employeeIds.filter(id => !lockedIds.has(id))
+
+      if (draftEmployeeIds.length > 0) {
+        const weekStart = weekDays[0]
+        const weekEnd = weekDays[weekDays.length - 1]
+        const recorded = await db.workUnit.count({
+          where: {
+            companyId,
+            employeeId: { in: draftEmployeeIds },
+            date: { gte: weekStart, lte: weekEnd },
+          },
+        })
+        const expected = draftEmployeeIds.length * weekDays.length
+        missingAttendanceCount = Math.max(0, expected - recorded)
+      }
     }
 
     // 2) DRAFT payrolls this month
