@@ -53,13 +53,6 @@ export function attLabel(units: number | null): string {
   return units.toFixed(1)
 }
 
-// ─── Overtime cell rendering ─────────────────────────────────────────────────
-
-export function otLabel(hours: number | null): string {
-  if (hours === null) return "·"
-  return `${hours}h`
-}
-
 // ─── KPI (Phase 3 của chamcong) ───────────────────────────────────────────────
 
 export const KPI_CONFIG: Record<KpiViolationType, { full: string; cls: string; dot: string }> = {

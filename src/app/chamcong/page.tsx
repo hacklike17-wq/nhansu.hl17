@@ -8,7 +8,7 @@ import { useDeductions } from '@/hooks/useDeductions'
 import { useKpiViolations, upsertKpiViolation } from '@/hooks/useKpiViolations'
 import { useOvertimeEntries, upsertOvertimeEntry } from '@/hooks/useOvertimeEntries'
 import type { KpiViolationType } from '@/types'
-import { X, Calendar, Trash2, Sparkles, AlertTriangle } from 'lucide-react'
+import { X, Calendar, Trash2, Sparkles } from 'lucide-react'
 import {
   getDays,
   isWeekend,
@@ -16,7 +16,6 @@ import {
   toDateStr,
   attCls,
   attLabel,
-  otLabel,
   KPI_CONFIG,
   KPI_TYPES,
 } from './_lib/chamcong-helpers'
