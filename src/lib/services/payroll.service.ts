@@ -1,6 +1,7 @@
 import { db } from "@/lib/db"
 import { evalFormula, buildDependencyGraph, topologicalSort, extractVars } from "@/lib/formula"
 import { calcPIT, calcPITFallback } from "@/lib/payroll/pit"
+import { calcEmployeeInsurance } from "@/lib/payroll/insurance"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -346,11 +347,10 @@ export async function calculatePayroll(
   const grossSalary = Math.max(0, workSalary + overtimePay + totalBonus - totalDeductions)
 
   // ── Bảo hiểm (tính trên lương cơ bản) ────────────────────────
-  // enableInsuranceTax=false → zero out entirely (toggle from Cài đặt → Hệ thống)
-  const bhxhEmployee  = enableInsuranceTax ? Math.round(baseSalary * insurance.bhxh) : 0
-  const bhytEmployee  = enableInsuranceTax ? Math.round(baseSalary * insurance.bhyt) : 0
-  const bhtnEmployee  = enableInsuranceTax ? Math.round(baseSalary * insurance.bhtn) : 0
-  const totalInsurance = bhxhEmployee + bhytEmployee + bhtnEmployee
+  // enableInsuranceTax=false → zero out entirely (toggle from Cài đặt → Hệ thống).
+  // Extracted to src/lib/payroll/insurance.ts (Phase 5b).
+  const { bhxhEmployee, bhytEmployee, bhtnEmployee, total: totalInsurance } =
+    calcEmployeeInsurance(baseSalary, insurance, enableInsuranceTax)
 
   // ── Thuế TNCN (giảm trừ gia cảnh 11M/tháng) ──────────────────
   const PERSONAL_DEDUCTION = 11_000_000
