@@ -1,6 +1,9 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { Sparkles, X, Send, Loader2, AlertCircle, Wrench } from 'lucide-react'
+import {
+  Sparkles, X, Send, Loader2, AlertCircle, Wrench,
+  History, Trash2, ArrowLeft, MessageSquare,
+} from 'lucide-react'
 import { useAuth } from '@/components/auth/AuthProvider'
 
 type ToolCallTrace = {
@@ -24,22 +27,72 @@ type ChatResponse = {
   usage?: { inputTokens: number; outputTokens: number }
 }
 
+type ConvSummary = {
+  id: string
+  title: string
+  role: string
+  createdAt: string
+  updatedAt: string
+  messageCount: number
+}
+
+type ConvDetail = {
+  conversation: { id: string; title: string | null; role: string }
+  messages: ChatMsg[]
+}
+
 const ROLE_LABEL: Record<string, string> = {
   admin:    'Admin · 5 công cụ toàn công ty',
   manager:  'Quản lý · 5 công cụ cá nhân',
   employee: 'Nhân viên · 5 công cụ cá nhân',
 }
 
+const STORAGE_KEY = 'nhansu.ai.currentConversationId'
+
+function readStoredConvId(): string | null {
+  if (typeof window === 'undefined') return null
+  try { return localStorage.getItem(STORAGE_KEY) } catch { return null }
+}
+function writeStoredConvId(id: string) {
+  if (typeof window === 'undefined') return
+  try { localStorage.setItem(STORAGE_KEY, id) } catch {}
+}
+function clearStoredConvId() {
+  if (typeof window === 'undefined') return
+  try { localStorage.removeItem(STORAGE_KEY) } catch {}
+}
+
+function formatRelativeTime(iso: string): string {
+  const d = new Date(iso)
+  const now = Date.now()
+  const diffMs = now - d.getTime()
+  const mins = Math.floor(diffMs / 60000)
+  if (mins < 1) return 'vừa xong'
+  if (mins < 60) return `${mins} phút trước`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours} giờ trước`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days} ngày trước`
+  return d.toISOString().slice(0, 10)
+}
+
 /**
- * Floating chat widget. Bottom-right bubble; click to open a 460x600
- * panel. Open to any authenticated user. Scoping is enforced server-side:
+ * Floating chat widget with conversation history.
+ *
+ * Bottom-right bubble; click to open a 460x600 panel. Open to any
+ * authenticated user. Scoping is enforced server-side:
  *  - admin    → company-wide tools (5)
  *  - manager  → self-scope tools (5)
  *  - employee → self-scope tools (5, identical to manager)
  *
- * Stateless on reload: the widget forgets the conversation when the page
- * is navigated because we don't persist conversationId locally. That's OK
- * for now — conversation history browsing is a Phase 2.4 feature.
+ * Conversation persistence (Phase 2.4):
+ *  - Current conversationId is stored in localStorage so F5 / navigate
+ *    keeps the thread open.
+ *  - A history panel lists previous conversations; clicking one loads
+ *    its messages. Each row has a trash button for hard delete (the
+ *    DB cascades to ai_messages).
+ *  - Server rejects 404 for non-owned ids; we silently clear
+ *    localStorage in that case.
  */
 export default function ChatWidget() {
   const { user } = useAuth()
@@ -49,17 +102,53 @@ export default function ChatWidget() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // History panel state
+  const [showHistory, setShowHistory] = useState(false)
+  const [history, setHistory] = useState<ConvSummary[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [loadingConvId, setLoadingConvId] = useState<string | null>(null)
+  const [deletingConvId, setDeletingConvId] = useState<string | null>(null)
+  const [restoring, setRestoring] = useState(false)
+
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Any authenticated user may use the widget. Role decides prompt + tools
-  // on the server side, not visibility.
   const canUseAI = !!user
 
+  // Auto-scroll chat area on new messages (but not while history is shown)
   useEffect(() => {
-    if (!open) return
+    if (!open || showHistory) return
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [messages, open])
+  }, [messages, open, showHistory])
+
+  // On mount, try to restore last conversation from localStorage. Silently
+  // clear if the id no longer belongs to the user (404) or the call fails.
+  useEffect(() => {
+    if (!canUseAI) return
+    const saved = readStoredConvId()
+    if (!saved) return
+    setRestoring(true)
+    fetch(`/api/ai/chat/conversations/${saved}`)
+      .then(async r => {
+        if (r.status === 404) {
+          clearStoredConvId()
+          return null
+        }
+        if (!r.ok) throw new Error('fetch failed')
+        return (await r.json()) as ConvDetail
+      })
+      .then(data => {
+        if (!data) return
+        setConversationId(data.conversation.id)
+        setMessages(data.messages)
+      })
+      .catch(() => {
+        // Non-fatal — UI starts fresh
+      })
+      .finally(() => setRestoring(false))
+  }, [canUseAI])
 
   if (!canUseAI) return null
 
@@ -73,7 +162,6 @@ export default function ChatWidget() {
     setError(null)
     setSending(true)
 
-    // Optimistically add the user message
     const optimisticId = `tmp-${Date.now()}`
     setMessages(prev => [...prev, { id: optimisticId, role: 'user', content: text }])
     setInput('')
@@ -93,14 +181,13 @@ export default function ChatWidget() {
       }
       const typed = data as ChatResponse
       setConversationId(typed.conversationId)
+      writeStoredConvId(typed.conversationId)
 
-      // Replace the optimistic user message with the server-confirmed pair
       setMessages(prev => {
         const withoutOpt = prev.filter(m => m.id !== optimisticId)
         return [...withoutOpt, ...typed.messages]
       })
     } catch (e: any) {
-      // Remove optimistic message on failure so the user can retry without duplicate
       setMessages(prev => prev.filter(m => m.id !== optimisticId))
       setInput(text)
       setError(e?.message ?? 'Không gửi được')
@@ -113,6 +200,63 @@ export default function ChatWidget() {
     setMessages([])
     setConversationId(null)
     setError(null)
+    clearStoredConvId()
+  }
+
+  const openHistory = async () => {
+    setShowHistory(true)
+    setHistoryError(null)
+    setHistoryLoading(true)
+    try {
+      const res = await fetch('/api/ai/chat/conversations')
+      if (!res.ok) throw new Error('fetch failed')
+      const data = await res.json()
+      setHistory(data.conversations ?? [])
+    } catch {
+      setHistoryError('Không tải được lịch sử hội thoại')
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const loadConversation = async (id: string) => {
+    if (loadingConvId) return
+    setLoadingConvId(id)
+    setError(null)
+    try {
+      const res = await fetch(`/api/ai/chat/conversations/${id}`)
+      if (!res.ok) throw new Error('fetch failed')
+      const data = (await res.json()) as ConvDetail
+      setConversationId(data.conversation.id)
+      setMessages(data.messages)
+      writeStoredConvId(data.conversation.id)
+      setShowHistory(false)
+    } catch {
+      setError('Không tải được hội thoại đã chọn')
+    } finally {
+      setLoadingConvId(null)
+    }
+  }
+
+  const deleteConversation = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (deletingConvId) return
+    if (!confirm('Xoá hội thoại này? Không thể khôi phục.')) return
+    setDeletingConvId(id)
+    try {
+      const res = await fetch(`/api/ai/chat/conversations/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('delete failed')
+      setHistory(prev => prev.filter(c => c.id !== id))
+      if (conversationId === id) {
+        setConversationId(null)
+        setMessages([])
+        clearStoredConvId()
+      }
+    } catch {
+      setHistoryError('Không xoá được hội thoại')
+    } finally {
+      setDeletingConvId(null)
+    }
   }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -141,22 +285,48 @@ export default function ChatWidget() {
         <div className="fixed bottom-10 right-8 z-50 w-[460px] max-w-[calc(100vw-3rem)] h-[600px] max-h-[calc(100vh-3rem)] bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-violet-600 to-blue-600 text-white">
-            <div className="flex items-center gap-2">
-              <Sparkles size={16} />
-              <div>
-                <div className="text-sm font-bold leading-tight">Trợ lý AI</div>
-                <div className="text-[10px] opacity-80">{roleLabel}</div>
+            <div className="flex items-center gap-2 min-w-0">
+              {showHistory ? (
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className="p-1 rounded hover:bg-white/20 transition"
+                  aria-label="Quay lại"
+                >
+                  <ArrowLeft size={16} />
+                </button>
+              ) : (
+                <Sparkles size={16} className="shrink-0" />
+              )}
+              <div className="min-w-0">
+                <div className="text-sm font-bold leading-tight truncate">
+                  {showHistory ? 'Lịch sử hội thoại' : 'Trợ lý AI'}
+                </div>
+                <div className="text-[10px] opacity-80 truncate">
+                  {showHistory ? `${history.length} hội thoại` : roleLabel}
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              {messages.length > 0 && (
-                <button
-                  onClick={resetConversation}
-                  className="text-[10px] px-2 py-1 rounded bg-white/10 hover:bg-white/20 transition"
-                  title="Bắt đầu hội thoại mới"
-                >
-                  Mới
-                </button>
+            <div className="flex items-center gap-1 shrink-0">
+              {!showHistory && (
+                <>
+                  <button
+                    onClick={openHistory}
+                    className="p-1.5 rounded hover:bg-white/20 transition"
+                    title="Lịch sử hội thoại"
+                    aria-label="Lịch sử"
+                  >
+                    <History size={14} />
+                  </button>
+                  {(messages.length > 0 || conversationId) && (
+                    <button
+                      onClick={resetConversation}
+                      className="text-[10px] px-2 py-1 rounded bg-white/10 hover:bg-white/20 transition"
+                      title="Bắt đầu hội thoại mới"
+                    >
+                      Mới
+                    </button>
+                  )}
+                </>
               )}
               <button
                 onClick={() => setOpen(false)}
@@ -168,76 +338,152 @@ export default function ChatWidget() {
             </div>
           </div>
 
-          {/* Messages */}
-          <div
-            ref={scrollRef}
-            className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-gray-50"
-          >
-            {messages.length === 0 && (
-              <div className="text-center text-xs text-gray-400 pt-10 px-4">
-                <Sparkles size={24} className="mx-auto mb-2 text-violet-300" />
-                <p className="font-semibold text-gray-500 mb-1">Bắt đầu hội thoại</p>
-                {isAdminUser ? (
-                  <>
-                    <p>Hỏi về quy tắc, nội quy, hoặc số liệu công ty.</p>
-                    <p className="mt-2 text-[10px] text-gray-400">
-                      Admin có 5 công cụ: tổng quan, danh sách NV, phiếu lương, chấm công, vi phạm KPI.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p>Hỏi về lương, công, KPI của bạn — hoặc quy tắc công ty.</p>
-                    <p className="mt-2 text-[10px] text-gray-400">
-                      Có 5 công cụ cá nhân: thông tin, phiếu lương, chấm công, vi phạm KPI, lịch sử nghỉ phép.
-                    </p>
-                  </>
-                )}
-              </div>
-            )}
-
-            {messages.map(m => (
-              <div
-                key={m.id}
-                className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
-              >
-                {m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0 && (
-                  <div className="max-w-[95%] mb-1 text-[10px] text-gray-500 flex flex-wrap gap-1">
-                    {m.toolCalls.map((tc, i) => (
-                      <span
-                        key={i}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-50 border border-violet-200 text-violet-700"
-                        title={`${tc.durationMs}ms · ${JSON.stringify(tc.args)}`}
+          {/* History overlay */}
+          {showHistory && (
+            <div className="flex-1 overflow-y-auto bg-gray-50">
+              {historyLoading && (
+                <div className="p-10 text-center text-xs text-gray-400">
+                  <Loader2 size={20} className="animate-spin mx-auto mb-2" />
+                  Đang tải...
+                </div>
+              )}
+              {historyError && (
+                <div className="p-4 text-xs text-red-600 text-center">{historyError}</div>
+              )}
+              {!historyLoading && !historyError && history.length === 0 && (
+                <div className="p-10 text-center text-xs text-gray-400">
+                  <MessageSquare size={24} className="mx-auto mb-2 text-gray-300" />
+                  <p>Chưa có hội thoại nào.</p>
+                </div>
+              )}
+              {!historyLoading && history.length > 0 && (
+                <div className="divide-y divide-gray-100">
+                  {history.map(c => {
+                    const isCurrent = c.id === conversationId
+                    const isLoading = loadingConvId === c.id
+                    const isDeleting = deletingConvId === c.id
+                    return (
+                      <div
+                        key={c.id}
+                        onClick={() => loadConversation(c.id)}
+                        className={`group px-4 py-3 cursor-pointer transition ${
+                          isCurrent ? 'bg-violet-50' : 'hover:bg-white'
+                        }`}
                       >
-                        <Wrench size={9} />
-                        {tc.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              {isCurrent && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0" />
+                              )}
+                              <div className="text-xs font-semibold text-gray-800 truncate">
+                                {c.title || 'Hội thoại'}
+                              </div>
+                            </div>
+                            <div className="text-[10px] text-gray-400 mt-0.5 tabular-nums">
+                              {c.messageCount} tin nhắn · {formatRelativeTime(c.updatedAt)}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {isLoading && <Loader2 size={12} className="animate-spin text-gray-400" />}
+                            <button
+                              onClick={(e) => deleteConversation(c.id, e)}
+                              disabled={isDeleting}
+                              className="p-1 rounded text-gray-300 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition disabled:opacity-40"
+                              title="Xoá"
+                              aria-label="Xoá hội thoại"
+                            >
+                              {isDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Messages area */}
+          {!showHistory && (
+            <div
+              ref={scrollRef}
+              className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-gray-50"
+            >
+              {restoring && messages.length === 0 && (
+                <div className="text-center text-[11px] text-gray-400 pt-6">
+                  <Loader2 size={14} className="animate-spin inline mr-1" />
+                  Đang khôi phục hội thoại...
+                </div>
+              )}
+
+              {!restoring && messages.length === 0 && (
+                <div className="text-center text-xs text-gray-400 pt-10 px-4">
+                  <Sparkles size={24} className="mx-auto mb-2 text-violet-300" />
+                  <p className="font-semibold text-gray-500 mb-1">Bắt đầu hội thoại</p>
+                  {isAdminUser ? (
+                    <>
+                      <p>Hỏi về quy tắc, nội quy, hoặc số liệu công ty.</p>
+                      <p className="mt-2 text-[10px] text-gray-400">
+                        Admin có 5 công cụ: tổng quan, danh sách NV, phiếu lương, chấm công, vi phạm KPI.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p>Hỏi về lương, công, KPI của bạn — hoặc quy tắc công ty.</p>
+                      <p className="mt-2 text-[10px] text-gray-400">
+                        Có 5 công cụ cá nhân: thông tin, phiếu lương, chấm công, vi phạm KPI, lịch sử nghỉ phép.
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {messages.map(m => (
                 <div
-                  className={`${
-                    m.role === 'user'
-                      ? 'max-w-[85%] bg-blue-600 text-white rounded-br-sm'
-                      : 'max-w-[95%] bg-white border border-gray-200 text-gray-800 rounded-bl-sm'
-                  } px-3.5 py-2.5 rounded-2xl text-[13px] whitespace-pre-wrap leading-relaxed`}
+                  key={m.id}
+                  className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
                 >
-                  {m.content}
+                  {m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0 && (
+                    <div className="max-w-[95%] mb-1 text-[10px] text-gray-500 flex flex-wrap gap-1">
+                      {m.toolCalls.map((tc, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-50 border border-violet-200 text-violet-700"
+                          title={`${tc.durationMs}ms · ${JSON.stringify(tc.args)}`}
+                        >
+                          <Wrench size={9} />
+                          {tc.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div
+                    className={`${
+                      m.role === 'user'
+                        ? 'max-w-[85%] bg-blue-600 text-white rounded-br-sm'
+                        : 'max-w-[95%] bg-white border border-gray-200 text-gray-800 rounded-bl-sm'
+                    } px-3.5 py-2.5 rounded-2xl text-[13px] whitespace-pre-wrap leading-relaxed`}
+                  >
+                    {m.content}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
 
-            {sending && (
-              <div className="flex justify-start">
-                <div className="max-w-[85%] px-3 py-2 rounded-2xl rounded-bl-sm bg-white border border-gray-200 text-gray-400 text-xs flex items-center gap-1.5">
-                  <Loader2 size={12} className="animate-spin" />
-                  AI đang suy nghĩ...
+              {sending && (
+                <div className="flex justify-start">
+                  <div className="max-w-[85%] px-3 py-2 rounded-2xl rounded-bl-sm bg-white border border-gray-200 text-gray-400 text-xs flex items-center gap-1.5">
+                    <Loader2 size={12} className="animate-spin" />
+                    AI đang suy nghĩ...
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
-          {/* Error bar */}
-          {error && (
+          {/* Error bar (only in chat view) */}
+          {!showHistory && error && (
             <div className="px-4 py-2 bg-red-50 border-t border-red-200 text-[11px] text-red-700 flex items-start gap-2">
               <AlertCircle size={12} className="shrink-0 mt-0.5" />
               <span className="flex-1">{error}</span>
@@ -245,28 +491,30 @@ export default function ChatWidget() {
             </div>
           )}
 
-          {/* Input */}
-          <div className="border-t border-gray-200 px-3 py-3 bg-white">
-            <div className="flex items-end gap-2">
-              <textarea
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={onKeyDown}
-                placeholder="Nhập câu hỏi... (Enter để gửi, Shift+Enter xuống dòng)"
-                rows={1}
-                disabled={sending}
-                className="flex-1 resize-none text-xs border border-gray-200 rounded-lg px-3 py-2 max-h-24 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 disabled:opacity-50"
-              />
-              <button
-                onClick={send}
-                disabled={sending || input.trim().length === 0}
-                className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-blue-600 text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition"
-                aria-label="Gửi"
-              >
-                {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-              </button>
+          {/* Input (only in chat view) */}
+          {!showHistory && (
+            <div className="border-t border-gray-200 px-3 py-3 bg-white">
+              <div className="flex items-end gap-2">
+                <textarea
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  placeholder="Nhập câu hỏi... (Enter để gửi, Shift+Enter xuống dòng)"
+                  rows={1}
+                  disabled={sending}
+                  className="flex-1 resize-none text-xs border border-gray-200 rounded-lg px-3 py-2 max-h-24 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 disabled:opacity-50"
+                />
+                <button
+                  onClick={send}
+                  disabled={sending || input.trim().length === 0}
+                  className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-blue-600 text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  aria-label="Gửi"
+                >
+                  {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </>
