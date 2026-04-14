@@ -146,10 +146,28 @@ function validateEmpDate(
 // ─── Planners ────────────────────────────────────────────────────────────────
 
 /**
+ * Letter codes that can appear in a chấm công cell alongside numeric values.
+ * Mirrors the KPI violation taxonomy the user uses — 5 codes total. Each
+ * code maps to (units, note) so the chấm công row still carries the right
+ * salary-day count even though the cell is a letter. Anything not in this
+ * table is treated as DM ("đi muộn") by the parser — per user's decision
+ * that messy cells should silently default to DM instead of blocking the
+ * whole file.
+ */
+export const WORK_UNIT_CODE_MAP: Record<string, { units: number; note: string }> = {
+  DM: { units: 1, note: "Đi muộn" },
+  NP: { units: 1, note: "Nghỉ phép" },
+  NS: { units: 0, note: "Nghỉ sai" },
+  KL: { units: 0, note: "Nghỉ" },
+  QC: { units: 1, note: "Quên chấm công" },
+}
+
+/**
  * Matrix cell semantics for chấm công:
  *   - numeric 0 / 0.5 / 1 / 1.5 / 2 / ...  → work_unit with units = value
- *   - "KL" (không lương)                    → units = 0, note = "Nghỉ"
- *   - anything else                         → row error (aborts file)
+ *   - "DM" / "NP" / "NS" / "KL" / "QC"     → mapped via WORK_UNIT_CODE_MAP
+ *   - Any other non-empty string            → default to DM (unknown code
+ *                                             fallback, per user spec)
  */
 export function planWorkUnitsImport(
   ws: ExcelJS.Worksheet,
@@ -186,27 +204,28 @@ export function planWorkUnitsImport(
       units = raw
     } else if (typeof raw === "string") {
       const s = raw.trim().toUpperCase()
-      if (s === "KL") {
-        units = 0
-        note = "Nghỉ"
+      const mapped = WORK_UNIT_CODE_MAP[s]
+      if (mapped) {
+        // Known letter code (DM / NP / NS / KL / QC)
+        units = mapped.units
+        note = mapped.note
       } else {
+        // Try to parse as number ("1.5" exported by some Excel versions)
         const n = Number(s.replace(",", "."))
         if (Number.isFinite(n)) {
           units = n
         } else {
-          errors.push({
-            row: cell.rowIdx,
-            message: `Giá trị chấm công không hiểu "${raw}" tại ${cell.empCode} ngày ${cell.date}`,
-          })
-          continue
+          // Unknown token — default to DM per user spec, but keep the
+          // original literal in the note so HR can audit later.
+          units = WORK_UNIT_CODE_MAP.DM.units
+          note = `${WORK_UNIT_CODE_MAP.DM.note} (gốc: "${raw}")`
         }
       }
     } else {
-      errors.push({
-        row: cell.rowIdx,
-        message: `Loại dữ liệu chấm công không hợp lệ tại ${cell.empCode} ngày ${cell.date}`,
-      })
-      continue
+      // Non-string, non-number cell (e.g. boolean, unexpected object) —
+      // very rare, still default to DM instead of blocking the file.
+      units = WORK_UNIT_CODE_MAP.DM.units
+      note = `${WORK_UNIT_CODE_MAP.DM.note} (gốc: ${JSON.stringify(raw)})`
     }
 
     if (units < 0 || units > 3) {
@@ -279,17 +298,21 @@ export function planOvertimeImport(
       const s = raw.trim().replace(",", ".")
       const n = Number(s)
       if (!Number.isFinite(n)) {
-        errors.push({
+        // Non-numeric cell in an overtime sheet is almost always a
+        // day-off marker (DM/NP/NS/KL/QC) that the user reused across
+        // sheets. Silently skip — tăng ca only makes sense for numeric
+        // hour values.
+        skipped.push({
           row: cell.rowIdx,
-          message: `Giờ tăng ca không hiểu "${raw}" tại ${cell.empCode} ngày ${cell.date}`,
+          reason: `${cell.empCode} ngày ${cell.date}: bỏ qua giá trị không phải số "${raw}"`,
         })
         continue
       }
       hours = n
     } else {
-      errors.push({
+      skipped.push({
         row: cell.rowIdx,
-        message: `Loại dữ liệu tăng ca không hợp lệ tại ${cell.empCode} ngày ${cell.date}`,
+        reason: `${cell.empCode} ngày ${cell.date}: bỏ qua cell không hỗ trợ`,
       })
       continue
     }

@@ -307,6 +307,24 @@ export default function ImportExportTab() {
                         </div>
                       </div>
 
+                      {sheet.errors.length > 0 && (
+                        <details open className="px-4 pb-2">
+                          <summary className="text-[11px] text-red-700 font-semibold cursor-pointer">
+                            ▶ {sheet.errors.length} dòng lỗi
+                          </summary>
+                          <ul className="mt-1 space-y-0.5 text-[10px] text-red-600 max-h-48 overflow-y-auto bg-red-50 px-2 py-1 rounded">
+                            {sheet.errors.slice(0, 50).map((er, i) => (
+                              <li key={i}>
+                                <span className="font-mono text-red-400">R{er.row}</span> · {er.message}
+                              </li>
+                            ))}
+                            {sheet.errors.length > 50 && (
+                              <li className="italic text-red-400">... +{sheet.errors.length - 50} dòng lỗi nữa</li>
+                            )}
+                          </ul>
+                        </details>
+                      )}
+
                       {sheet.skipped.length > 0 && (
                         <details className="px-4 pb-2">
                           <summary className="text-[11px] text-amber-700 cursor-pointer">
