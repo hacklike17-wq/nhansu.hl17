@@ -369,7 +369,7 @@ export default function ChatWidget() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-10 right-8 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-violet-600 to-blue-600 text-white shadow-xl hover:shadow-2xl hover:scale-105 transition-all flex items-center justify-center"
+          className="fixed bottom-5 right-5 md:bottom-10 md:right-8 z-50 w-12 h-12 md:w-14 md:h-14 rounded-full bg-gradient-to-br from-violet-600 to-blue-600 text-white shadow-xl hover:shadow-2xl hover:scale-105 transition-all flex items-center justify-center"
           aria-label="Mở trợ lý AI"
           title="Trợ lý AI"
         >
@@ -379,7 +379,7 @@ export default function ChatWidget() {
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed bottom-10 right-8 z-50 w-[460px] max-w-[calc(100vw-3rem)] h-[600px] max-h-[calc(100vh-3rem)] bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="fixed inset-2 md:inset-auto md:bottom-10 md:right-8 z-50 md:w-[460px] md:h-[600px] bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-violet-600 to-blue-600 text-white">
             <div className="flex items-center gap-2 min-w-0">

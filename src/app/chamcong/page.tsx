@@ -784,8 +784,8 @@ export default function ChamCongPage() {
           MODAL: EDIT CÔNG SỐ
           ═════════════════════════��════════════════ */}
       {attEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setAttEdit(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-72 p-5" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3" onClick={() => setAttEdit(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-[288px] p-5" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-sm font-semibold text-gray-900">{attEdit.empName}</p>
@@ -837,8 +837,8 @@ export default function ChamCongPage() {
           MODAL: EDIT TĂNG CA
           ══════════════════════════════════════════ */}
       {otEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setOtEdit(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-72 p-5" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3" onClick={() => setOtEdit(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-[288px] p-5" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-sm font-semibold text-gray-900">{otEdit.empName}</p>
@@ -890,8 +890,8 @@ export default function ChamCongPage() {
           MODAL: EDIT KPI
           ══════════════════════════════════════════ */}
       {kpiEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setKpiEdit(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-80 p-5" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3" onClick={() => setKpiEdit(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-[320px] p-5" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-sm font-semibold text-gray-900">{kpiEdit.empName}</p>
@@ -942,8 +942,8 @@ export default function ChamCongPage() {
 
         return (
           <div className="fixed inset-0 z-50 flex" onClick={() => setLogState(null)}>
-            <div className="flex-1 bg-black/20" />
-            <div className="bg-white w-88 min-w-[340px] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex-1 bg-black/20 hidden md:block" />
+            <div className="bg-white w-full md:w-88 md:min-w-[340px] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
                 <div>
                   <p className="text-sm font-semibold text-gray-900">{logState.empName}</p>

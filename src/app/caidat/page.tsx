@@ -341,7 +341,7 @@ export default function CaiDatPage() {
   return (
     <PageShell breadcrumb="Hệ thống" title="Cài đặt">
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 border border-gray-200 rounded-xl p-1 w-fit flex-wrap">
+      <div className="flex gap-1 bg-gray-100 border border-gray-200 rounded-xl p-1 w-full md:w-fit flex-wrap overflow-x-auto">
         {([
           ['company', 'Thông tin công ty', <Building2 key="b" size={13}/>],
           ['system', 'Hệ thống', <Settings key="s" size={13}/>],
@@ -352,7 +352,7 @@ export default function CaiDatPage() {
           <button
             key={key}
             onClick={() => setTab(key as typeof tab)}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${tab === key ? 'bg-white text-gray-900 font-semibold border border-gray-200 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+            className={`flex items-center gap-1.5 px-3 md:px-4 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap shrink-0 ${tab === key ? 'bg-white text-gray-900 font-semibold border border-gray-200 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
           >
             {icon} {label}
           </button>
@@ -362,7 +362,7 @@ export default function CaiDatPage() {
       {tab === 'company' && (
         <div className="bg-white border border-gray-200 rounded-xl p-6">
           <h3 className="text-sm font-bold text-gray-900 mb-4">Thông tin doanh nghiệp</h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {([
               ['Tên công ty', 'name'],
               ['Mã số thuế', 'taxCode'],
@@ -397,7 +397,7 @@ export default function CaiDatPage() {
       {tab === 'system' && (
         <div className="bg-white border border-gray-200 rounded-xl p-6">
           <h3 className="text-sm font-bold text-gray-900 mb-4">Cấu hình hệ thống</h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {([
               ['Giờ làm/ngày', 'workHoursPerDay'],
               ['Ngày làm/tuần', 'workDaysPerWeek'],
@@ -602,7 +602,7 @@ export default function CaiDatPage() {
           {/* ── Insurance & Tax (collapsed section) ── */}
           <div className="bg-white border border-gray-200 rounded-xl p-6">
             <h3 className="text-sm font-bold text-gray-900 mb-4">Cấu hình bảo hiểm &amp; thuế</h3>
-            <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6">
               <div>
                 <label className="block text-[11px] font-semibold text-gray-500 mb-1">BHXH (%)</label>
                 <input defaultValue={SYSTEM_CONFIG.socialInsuranceRate * 100} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs" />
@@ -915,7 +915,7 @@ export default function CaiDatPage() {
                   {formErrors._server}
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-x-5 gap-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
                 {/* Họ tên */}
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-600 mb-1">Họ tên <span className="text-red-500">*</span></label>
@@ -1021,7 +1021,7 @@ export default function CaiDatPage() {
                     <KeyRound size={14} className="text-blue-600" />
                     <span className="text-xs font-bold text-gray-900">Thông tin đăng nhập</span>
                   </div>
-                  <div className="grid grid-cols-2 gap-x-5 gap-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
                     {/* Account Status */}
                     <div>
                       <label className="block text-[11px] font-semibold text-gray-600 mb-1">Trạng thái tài khoản</label>
