@@ -446,11 +446,33 @@ model SalaryValue {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  employee Employee @relation(fields: [employeeId], references: [id])
+  employee Employee           @relation(fields: [employeeId], references: [id])
+  entries  SalaryValueEntry[]
 
   @@unique([employeeId, month, columnKey])
   @@index([companyId, month])
   @@map("salary_values")
+}
+
+// Line-item breakdown for manual-input salary columns. Phase 1 target:
+// `tien_phu_cap` (allowances) + `tien_tru_khac` (deductions). Each entry
+// has its own amount + reason + optional occurredAt date. The parent
+// SalaryValue.value is kept in sync as SUM(entries.amount) by the API
+// routes that create/delete entries — never trust raw SalaryValue.value
+// once entries exist for that row.
+model SalaryValueEntry {
+  id            String    @id @default(cuid())
+  salaryValueId String
+  amount        Decimal   @db.Decimal(15, 2)
+  reason        String
+  occurredAt    DateTime? @db.Date
+  createdBy     String?
+  createdAt     DateTime  @default(now())
+
+  salaryValue SalaryValue @relation(fields: [salaryValueId], references: [id], onDelete: Cascade)
+
+  @@index([salaryValueId])
+  @@map("salary_value_entries")
 }
 
 // ──────────────────────────────────────────────────────────────

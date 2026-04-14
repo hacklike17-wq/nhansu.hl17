@@ -185,6 +185,31 @@ const getMyPayroll: ToolDefinition = {
       }
     }
 
+    // Load line-item breakdown for tien_phu_cap + tien_tru_khac so the AI
+    // can explain "tại sao tháng này bạn bị trừ 200k" / "phụ cấp 1.5tr gồm
+    // những gì". Other columns (kpi, thưởng...) are single-value and don't
+    // have entries.
+    const entryRows = await db.salaryValue.findMany({
+      where: {
+        companyId: ctx.companyId,
+        employeeId,
+        month: monthStart,
+        columnKey: { in: ["tien_phu_cap", "tien_tru_khac"] },
+      },
+      include: { entries: { orderBy: { createdAt: "asc" } } },
+    })
+    const entriesByColumn: Record<string, Array<{ amount: number; reason: string; occurredAt: string | null }>> = {
+      tien_phu_cap: [],
+      tien_tru_khac: [],
+    }
+    for (const sv of entryRows) {
+      entriesByColumn[sv.columnKey] = sv.entries.map(e => ({
+        amount: toNum(e.amount),
+        reason: e.reason,
+        occurredAt: e.occurredAt ? e.occurredAt.toISOString().slice(0, 10) : null,
+      }))
+    }
+
     return {
       ok: true,
       data: {
@@ -200,8 +225,10 @@ const getMyPayroll: ToolDefinition = {
         overtimePayVND: toNum(payroll.overtimePay),
         mealPayVND: toNum(payroll.mealPay),
         tienPhuCapVND: toNum(payroll.tienPhuCap),
+        tienPhuCapEntries: entriesByColumn.tien_phu_cap,
         kpiChuyenCanVND: toNum(payroll.kpiChuyenCan),
         tienTruKhacVND: toNum(payroll.tienPhat),
+        tienTruKhacEntries: entriesByColumn.tien_tru_khac,
         bhxhEmployeeVND: toNum(payroll.bhxhEmployee),
         bhytEmployeeVND: toNum(payroll.bhytEmployee),
         bhtnEmployeeVND: toNum(payroll.bhtnEmployee),

@@ -12,6 +12,15 @@ import { STATUS_MAP, COL_STYLE, MANUAL_INPUT_MAP } from './_lib/constants'
 import { buildRowVars, renderCell } from './_lib/row-helpers'
 import PersonalSalaryView from '@/components/payroll/PersonalSalaryView'
 import ApprovalHistory from '@/components/payroll/ApprovalHistory'
+import SalaryEntriesModal from '@/components/payroll/SalaryEntriesModal'
+
+// Columns whose edit flow opens the entries breakdown modal instead of an
+// inline single-value input. Kept in sync with ENTRY_ALLOWED_COLUMNS in
+// src/lib/schemas/payroll.ts.
+const ENTRY_COLUMNS: Record<string, string> = {
+  tien_phu_cap: 'Phụ cấp',
+  tien_tru_khac: 'Trừ khác',
+}
 
 export default function LuongPage() {
   const { user, hasPermission } = useAuth()
@@ -177,6 +186,13 @@ export default function LuongPage() {
     setCellEdit({ payrollId, colKey, raw })
     setCellVal(String(raw))
   }
+
+  /* ─── Entries modal (line-item breakdown for tien_phu_cap + tien_tru_khac) ─── */
+  const [entriesModal, setEntriesModal] = useState<{
+    payrollId: string
+    columnKey: 'tien_phu_cap' | 'tien_tru_khac'
+    label: string
+  } | null>(null)
 
   // Employees not yet in this month's payroll (exclude RESIGNED + deleted only)
   const payrollEmployeeIds = new Set(payrolls.map((p: any) => p.employeeId))
@@ -432,6 +448,12 @@ export default function LuongPage() {
                                     <span className="text-[9px] text-red-500 max-w-[112px] text-right leading-tight">{cellError}</span>
                                   )}
                                 </div>
+                              ) : canEditCell && ENTRY_COLUMNS[col.key] ? (
+                                <span onClick={() => setEntriesModal({ payrollId: p.id, columnKey: col.key as 'tien_phu_cap' | 'tien_tru_khac', label: ENTRY_COLUMNS[col.key] })}
+                                  className="cursor-pointer hover:bg-blue-50 hover:text-blue-700 px-1 py-0.5 rounded transition-colors inline-block"
+                                  title="Click để xem / sửa chi tiết">
+                                  {renderCell(col.key, raw)}
+                                </span>
                               ) : canEditCell ? (
                                 <span onClick={() => { setCellError(null); openCellEdit(p.id, col.key, raw) }}
                                   className="cursor-pointer hover:bg-amber-50 hover:text-amber-700 px-1 py-0.5 rounded transition-colors inline-block"
@@ -621,6 +643,18 @@ export default function LuongPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* ── Entries breakdown modal (tien_phu_cap / tien_tru_khac) ── */}
+      {entriesModal && (
+        <SalaryEntriesModal
+          payrollId={entriesModal.payrollId}
+          columnKey={entriesModal.columnKey}
+          columnLabel={entriesModal.label}
+          canEdit={!!canEdit}
+          onClose={() => setEntriesModal(null)}
+          onChanged={() => mutate()}
+        />
       )}
 
       {/* ── Approval history modal ── */}

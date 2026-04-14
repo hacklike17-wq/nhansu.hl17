@@ -4,6 +4,7 @@ import { Wallet, TrendingUp, TrendingDown, CheckCircle2, Clock, Lock, Banknote, 
 import { fmtVND } from '@/lib/format'
 import { STATUS_MAP } from '@/app/luong/_lib/constants'
 import ApprovalHistory from './ApprovalHistory'
+import SalaryEntriesModal from './SalaryEntriesModal'
 
 type PayrollRow = {
   id: string
@@ -56,7 +57,17 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function LineRow({ label, value, tone = 'normal' }: { label: string; value: number; tone?: 'normal' | 'positive' | 'negative' | 'muted' }) {
+function LineRow({
+  label,
+  value,
+  tone = 'normal',
+  onClick,
+}: {
+  label: string
+  value: number
+  tone?: 'normal' | 'positive' | 'negative' | 'muted'
+  onClick?: () => void
+}) {
   if (!value) return null
   const cls =
     tone === 'positive'
@@ -67,9 +78,19 @@ function LineRow({ label, value, tone = 'normal' }: { label: string; value: numb
           ? 'text-gray-500'
           : 'text-gray-900'
   const prefix = tone === 'negative' ? '− ' : ''
+  const clickable = typeof onClick === 'function'
   return (
-    <div className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-      <span className={`text-xs ${tone === 'muted' ? 'text-gray-400' : 'text-gray-600'}`}>{label}</span>
+    <div
+      className={`flex items-center justify-between py-2 border-b border-gray-50 last:border-0 ${
+        clickable ? 'cursor-pointer hover:bg-blue-50/40 rounded px-1 -mx-1 transition-colors' : ''
+      }`}
+      onClick={onClick}
+      title={clickable ? 'Click để xem chi tiết' : undefined}
+    >
+      <span className={`text-xs ${tone === 'muted' ? 'text-gray-400' : 'text-gray-600'}`}>
+        {label}
+        {clickable && <span className="ml-1 text-[10px] text-blue-500">›</span>}
+      </span>
       <span className={`text-xs font-semibold tabular-nums ${cls}`}>{prefix}{fmtVND(value)} ₫</span>
     </div>
   )
@@ -88,6 +109,10 @@ export default function PersonalSalaryView({
   const [feedback, setFeedback] = useState<string | null>(null)
   const [rejectOpen, setRejectOpen] = useState(false)
   const [rejectNote, setRejectNote] = useState('')
+  const [entriesModal, setEntriesModal] = useState<{
+    columnKey: 'tien_phu_cap' | 'tien_tru_khac'
+    label: string
+  } | null>(null)
 
   const num = (v: number | string | undefined | null) => Number(v ?? 0)
 
@@ -258,7 +283,7 @@ export default function PersonalSalaryView({
                 <LineRow label="Lương công thực tế" value={num(payroll.workSalary)} tone="muted"/>
                 <LineRow label="Tiền tăng ca"       value={num(payroll.overtimePay)} />
                 <LineRow label="KPI chuyên cần"     value={num(payroll.kpiChuyenCan)} />
-                <LineRow label="Phụ cấp"            value={num(payroll.tienPhuCap)} />
+                <LineRow label="Phụ cấp"            value={num(payroll.tienPhuCap)} onClick={num(payroll.tienPhuCap) ? () => setEntriesModal({ columnKey: 'tien_phu_cap', label: 'Phụ cấp' }) : undefined} />
                 <LineRow label="Tiền ăn"            value={num(payroll.mealPay)} />
               </div>
               <div className="px-5 py-3 bg-green-50/40 border-t border-gray-100 flex items-center justify-between">
@@ -289,7 +314,7 @@ export default function PersonalSalaryView({
                   </>
                 )}
                 {showPitCol && <LineRow label="Thuế TNCN" value={num(payroll.pitTax)} tone="negative"/>}
-                <LineRow label="Trừ khác"      value={num(payroll.tienPhat)} tone="negative"/>
+                <LineRow label="Trừ khác"      value={num(payroll.tienPhat)} tone="negative" onClick={num(payroll.tienPhat) ? () => setEntriesModal({ columnKey: 'tien_tru_khac', label: 'Trừ khác' }) : undefined}/>
               </div>
               <div className="px-5 py-3 bg-red-50/40 border-t border-gray-100 flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Tổng trừ</span>
@@ -341,6 +366,17 @@ export default function PersonalSalaryView({
           {/* Approval history timeline */}
           <ApprovalHistory payrollId={payroll.id}/>
         </>
+      )}
+
+      {/* Entries breakdown modal (read-only for employee) */}
+      {entriesModal && payroll && (
+        <SalaryEntriesModal
+          payrollId={payroll.id}
+          columnKey={entriesModal.columnKey}
+          columnLabel={entriesModal.label}
+          canEdit={false}
+          onClose={() => setEntriesModal(null)}
+        />
       )}
 
       {/* Reject modal — employee notes reason when rejecting */}
