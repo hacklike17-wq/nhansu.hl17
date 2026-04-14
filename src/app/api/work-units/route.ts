@@ -55,6 +55,10 @@ export async function DELETE(req: NextRequest) {
       },
     }).catch(err => console.warn("audit work-units DELETE failed:", err))
 
+    autoRecalcDraftPayroll(companyId, employeeId, monthStart).catch(err =>
+      console.warn("autoRecalcDraftPayroll after DELETE failed:", err)
+    )
+
     return NextResponse.json({ ok: true, deleted: result.count })
   } catch (e) {
     return errorResponse(e)

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requirePermission, errorResponse } from "@/lib/permission"
 import { lockedEmployeeIdsForMonth } from "@/lib/chamcong-guard"
+import { recalculateMonth } from "@/lib/services/payroll.service"
 
 /**
  * POST /api/work-units/auto-fill
@@ -240,6 +241,13 @@ export async function POST(req: NextRequest) {
         skipDuplicates: true,
       })
       createdCount = result.count
+
+      // Sync DRAFT payrolls for the affected month so Payroll.netWorkUnits /
+      // congSoNhan stay in step with the newly-created WorkUnit rows.
+      const targetMonthStart = new Date(Date.UTC(targetY, targetM, 1))
+      recalculateMonth(companyId, targetMonthStart).catch(err =>
+        console.warn("recalculateMonth after auto-fill failed:", err)
+      )
     }
 
     // skippedLeave is included in rowsToCreate (as units=0). Subtract from
