@@ -68,6 +68,15 @@ export async function GET(_req: NextRequest) {
     const totalEmployees = employees.length
     const employeeIds = employees.map(e => e.id)
 
+    // Employees whose current-month payroll is no longer DRAFT (APPROVED /
+    // LOCKED / PAID). chamcong-guard blocks any mutation for them, so they
+    // should NOT surface in actionable counts (absent, missing attendance).
+    // Computed once and reused below.
+    const lockedIdsForCurrentMonth =
+      employeeIds.length > 0
+        ? await lockedEmployeeIdsForMonth(companyId, monthStart, employeeIds)
+        : new Set<string>()
+
     // ── Today queries (skipped on weekend) ────────────────────────
     let workingToday = 0
     let absentNoReason = 0
@@ -108,9 +117,11 @@ export async function GET(_req: NextRequest) {
 
       // "Vắng không lý do" — chỉ tính khi đã có WorkUnit cho ai đó hôm nay
       // (= chắc chắn manager đã bắt đầu nhập công), và NV này không có cả WorkUnit
-      // lẫn UNPAID leave.
+      // lẫn UNPAID leave. Skip employees whose payroll is already locked —
+      // they're out of the actionable pool (e.g. already PAID for this month).
       if (todayWorkUnits.length > 0) {
         for (const empId of employeeIds) {
+          if (lockedIdsForCurrentMonth.has(empId)) continue
           if (!workingSet.has(empId) && !onUnpaidLeaveSet.has(empId)) {
             absentNoReason++
           }
@@ -125,8 +136,7 @@ export async function GET(_req: NextRequest) {
     //    actionable and shouldn't appear in the manager action queue.
     let missingAttendanceCount = 0
     if (employeeIds.length > 0 && weekDays.length > 0) {
-      const lockedIds = await lockedEmployeeIdsForMonth(companyId, monthStart, employeeIds)
-      const draftEmployeeIds = employeeIds.filter(id => !lockedIds.has(id))
+      const draftEmployeeIds = employeeIds.filter(id => !lockedIdsForCurrentMonth.has(id))
 
       if (draftEmployeeIds.length > 0) {
         const weekStart = weekDays[0]
@@ -143,10 +153,18 @@ export async function GET(_req: NextRequest) {
       }
     }
 
-    // 2) DRAFT payrolls this month
+    // 2) DRAFT payrolls — surface only the PREVIOUS month's remaining drafts.
+    //    Rationale: during month M the admin is still inputting attendance
+    //    and intentionally keeps payroll in DRAFT. The "chưa gửi NV xác nhận"
+    //    warning only makes sense once month M closes — the payroll approval
+    //    window is the first few days of month M+1, and anything still
+    //    DRAFT by then is pending admin action. Drafts for the CURRENT
+    //    month are not flagged.
+    const prevMonthStart = new Date(Date.UTC(y, m - 1, 1))
     const draftPayrollCount = await db.payroll.count({
-      where: { companyId, month: monthStart, status: "DRAFT" },
+      where: { companyId, month: prevMonthStart, status: "DRAFT" },
     })
+    const draftPayrollMonthLabel = `${prevMonthStart.getUTCMonth() + 1}/${prevMonthStart.getUTCFullYear()}`
 
     // 3) Pending UNPAID leaves
     const pendingUnpaidLeaves = await db.leaveRequest.count({
@@ -201,6 +219,7 @@ export async function GET(_req: NextRequest) {
         actionQueue: {
           missingAttendanceCount,
           draftPayrollCount,
+          draftPayrollMonthLabel,
           pendingUnpaidLeaves,
         },
         monthProgress: {

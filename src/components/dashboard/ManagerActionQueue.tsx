@@ -7,6 +7,7 @@ type ApiResponse = {
   actionQueue: {
     missingAttendanceCount: number
     draftPayrollCount: number
+    draftPayrollMonthLabel?: string
     pendingUnpaidLeaves: number
   }
 }
@@ -43,9 +44,10 @@ export default function ManagerActionQueue() {
     })
   }
   if (q?.draftPayrollCount && q.draftPayrollCount > 0) {
+    const monthLabel = q.draftPayrollMonthLabel ? ` tháng ${q.draftPayrollMonthLabel}` : ''
     items.push({
       icon: <Wallet size={14} className="text-blue-600" />,
-      label: `${q.draftPayrollCount} bảng lương ở DRAFT — chưa gửi NV xác nhận`,
+      label: `${q.draftPayrollCount} bảng lương${monthLabel} ở DRAFT — cần gửi NV xác nhận`,
       href: '/luong',
       cls: 'border-blue-200 bg-blue-50 hover:bg-blue-100',
     })
