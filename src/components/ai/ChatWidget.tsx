@@ -24,14 +24,22 @@ type ChatResponse = {
   usage?: { inputTokens: number; outputTokens: number }
 }
 
+const ROLE_LABEL: Record<string, string> = {
+  admin:    'Admin · 5 công cụ toàn công ty',
+  manager:  'Quản lý · 5 công cụ cá nhân',
+  employee: 'Nhân viên · 5 công cụ cá nhân',
+}
+
 /**
- * Phase 2.1 floating chat widget. Bottom-right bubble; click to open a
- * 400x550 panel. Admin only for now — manager/employee will be opened in
- * Phase 2.3 once their tool scope is implemented.
+ * Floating chat widget. Bottom-right bubble; click to open a 460x600
+ * panel. Open to any authenticated user. Scoping is enforced server-side:
+ *  - admin    → company-wide tools (5)
+ *  - manager  → self-scope tools (5)
+ *  - employee → self-scope tools (5, identical to manager)
  *
  * Stateless on reload: the widget forgets the conversation when the page
  * is navigated because we don't persist conversationId locally. That's OK
- * for Phase 2.1 — conversation history browsing is a Phase 2.4 feature.
+ * for now — conversation history browsing is a Phase 2.4 feature.
  */
 export default function ChatWidget() {
   const { user } = useAuth()
@@ -43,8 +51,9 @@ export default function ChatWidget() {
   const [error, setError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Phase 2.1 gate: admin only
-  const isAdmin = user?.role === 'admin'
+  // Any authenticated user may use the widget. Role decides prompt + tools
+  // on the server side, not visibility.
+  const canUseAI = !!user
 
   useEffect(() => {
     if (!open) return
@@ -52,7 +61,10 @@ export default function ChatWidget() {
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, open])
 
-  if (!isAdmin) return null
+  if (!canUseAI) return null
+
+  const roleLabel = ROLE_LABEL[user?.role ?? ''] ?? 'Trợ lý cá nhân'
+  const isAdminUser = user?.role === 'admin'
 
   const send = async () => {
     const text = input.trim()
@@ -133,7 +145,7 @@ export default function ChatWidget() {
               <Sparkles size={16} />
               <div>
                 <div className="text-sm font-bold leading-tight">Trợ lý AI</div>
-                <div className="text-[10px] opacity-80">Admin · Phase 2.1 (chưa có tool)</div>
+                <div className="text-[10px] opacity-80">{roleLabel}</div>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -165,10 +177,21 @@ export default function ChatWidget() {
               <div className="text-center text-xs text-gray-400 pt-10 px-4">
                 <Sparkles size={24} className="mx-auto mb-2 text-violet-300" />
                 <p className="font-semibold text-gray-500 mb-1">Bắt đầu hội thoại</p>
-                <p>Hỏi về quy tắc, nội quy, hoặc số liệu công ty.</p>
-                <p className="mt-2 text-[10px] text-gray-400">
-                  Admin có 5 công cụ: tổng quan, danh sách NV, phiếu lương, chấm công, vi phạm KPI.
-                </p>
+                {isAdminUser ? (
+                  <>
+                    <p>Hỏi về quy tắc, nội quy, hoặc số liệu công ty.</p>
+                    <p className="mt-2 text-[10px] text-gray-400">
+                      Admin có 5 công cụ: tổng quan, danh sách NV, phiếu lương, chấm công, vi phạm KPI.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>Hỏi về lương, công, KPI của bạn — hoặc quy tắc công ty.</p>
+                    <p className="mt-2 text-[10px] text-gray-400">
+                      Có 5 công cụ cá nhân: thông tin, phiếu lương, chấm công, vi phạm KPI, lịch sử nghỉ phép.
+                    </p>
+                  </>
+                )}
               </div>
             )}
 

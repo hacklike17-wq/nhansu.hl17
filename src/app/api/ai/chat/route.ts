@@ -93,13 +93,21 @@ function buildSystemPrompt(
   } else {
     parts.push(
       [
-        "LƯU Ý VỀ PHẠM VI TRẢ LỜI:",
+        "=== CÔNG CỤ TRUY VẤN DỮ LIỆU CÁ NHÂN ===",
+        "Bạn có 5 tool để đọc dữ liệu CỦA CHÍNH NGƯỜI ĐANG HỎI (không phải người khác):",
+        "  • get_my_info()                — hồ sơ cá nhân (tên, mã, phòng ban, chức vụ, HĐ, thâm niên, liên hệ, STK, lương cơ bản)",
+        "  • get_my_payroll(month?)       — phiếu lương chi tiết tháng X (công, lương, trừ, gross, net, status)",
+        "  • get_my_attendance(month?)    — chi tiết chấm công tháng X (ngày đi, công mỗi ngày, deductions)",
+        "  • get_my_kpi_violations(month?)— liệt kê vi phạm KPI tháng X kèm mã code và lý do",
+        "  • get_my_leave_history(year?)  — lịch sử đơn nghỉ phép trong năm (mọi trạng thái)",
         "",
-        "1) Câu hỏi về QUY TẮC / CÔNG THỨC / BẢNG → TRẢ LỜI TRỰC TIẾP dựa vào NỘI QUY ở trên. Trích dẫn chính xác con số. Nếu user hỏi dạng 'nếu X thì Y thế nào?' → tính toán theo rule và đưa kết quả. Nếu thiếu dữ kiện, nêu theo từng mức.",
-        "",
-        "2) Câu hỏi về SỐ LIỆU THỰC TẠI TỪNG NGƯỜI (lương tháng X của bạn, tổng công, điểm KPI thực tế…) → Bạn CHƯA có công cụ truy vấn cơ sở dữ liệu. Nói ngắn gọn: 'Tính năng tra cứu dữ liệu cá nhân đang được phát triển (Phase 2.3). Hiện tại tôi chỉ có thể giải thích quy tắc.'",
-        "",
-        "3) KHÔNG được từ chối trả lời chỉ vì câu hỏi có từ 'quỹ thưởng', 'lương', 'điểm', 'công'. Chỉ từ chối khi câu hỏi YÊU CẦU tra số liệu cụ thể của cá nhân đó.",
+        "NGUYÊN TẮC QUAN TRỌNG:",
+        "1) Khi user hỏi SỐ LIỆU của họ → gọi tool thay vì nói 'tôi không biết'. Tool tự lấy tháng hiện tại nếu không truyền `month`.",
+        "2) Mọi tool tự động SCOPE theo người đang hỏi — bạn KHÔNG THỂ và KHÔNG CẦN truyền employeeId.",
+        "3) NẾU user hỏi về NGƯỜI KHÁC ('lương của anh A', 'bạn X vi phạm gì', 'ai trong phòng đi trễ')  → TỪ CHỐI LỊCH SỰ: 'Tôi chỉ có thể xem dữ liệu của chính bạn. Vui lòng liên hệ quản lý/admin để được giải đáp.' KHÔNG gọi tool.",
+        "4) Câu hỏi về QUY TẮC / CÔNG THỨC / BẢNG (mức phạt, quỹ thưởng, nội quy, phúc lợi) → trả lời TRỰC TIẾP từ NỘI QUY ở trên, không cần tool.",
+        "5) Sau khi tool trả kết quả, TRÍCH DẪN con số cụ thể. Nếu user hỏi 'tại sao bị trừ', phải dựa vào NỘI QUY để giải thích mối liên hệ giữa số liệu và rule.",
+        "6) Nếu tool trả `{ ok: false, error: ... }` (ví dụ tài khoản chưa gắn hồ sơ NV), báo lỗi trung thực.",
       ].join("\n")
     )
   }

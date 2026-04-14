@@ -1,17 +1,20 @@
 import { ADMIN_TOOLS } from "./admin-tools"
+import { SELF_TOOLS } from "./self-tools"
 import type { ToolDefinition, ToolRole } from "./types"
 
 export type { ToolDefinition, ToolRole, ToolContext, ToolResult } from "./types"
 export { toolToOpenAISchema } from "./types"
 
 /**
- * Phase 2.2: admin role gets the full admin tool set. Manager + employee
- * currently get nothing (Phase 2.3 will add self-scope tools). The chat
- * endpoint reads this and only passes tools for admin.
+ * Admin gets the full company-wide tool set. Manager + employee both get
+ * the self-scope tool set (same 5 tools — they differ only in the system
+ * prompt tone, not in data scope). Every self tool hard-pins
+ * `employeeId = ctx.employeeId` server-side so the LLM cannot cross-scope.
  */
 export function getToolsForRole(role: ToolRole): ToolDefinition[] {
   if (role === "admin") return ADMIN_TOOLS
-  return []
+  // manager + employee → identical self-scope tool set
+  return SELF_TOOLS
 }
 
 /** Look up a tool by name (scoped — doesn't cross roles). */
