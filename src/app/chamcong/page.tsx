@@ -22,6 +22,7 @@ import {
 } from './_lib/chamcong-helpers'
 import LogDrawer from './_components/LogDrawer'
 import CellEditModal from './_components/CellEditModal'
+import KpiEditModal from './_components/KpiEditModal'
 
 /* ═════════════════════════════════════════════════════
    SHARED TABLE CHROME — fixed layout để thẳng cột
@@ -302,27 +303,35 @@ export default function ChamCongPage() {
   }
 
   /* ══════════════ TABLE 3: KPI ══════════════ */
-  type KpiEdit = { empId: string; empName: string; date: string }
-  const [kpiEdit,      setKpiEdit]      = useState<KpiEdit | null>(null)
-  const [kpiSelected,  setKpiSelected]  = useState<KpiViolationType[]>([])
-  const [kpiNote,      setKpiNote]      = useState<string>('')
+  // Form state (selected types, note) moved into KpiEditModal (Phase 6c).
+  // Parent carries the initial seed values so the modal can mount with the
+  // existing violation pre-selected.
+  type KpiEdit = {
+    empId: string
+    empName: string
+    date: string
+    initialTypes: KpiViolationType[]
+    initialNote: string
+  }
+  const [kpiEdit, setKpiEdit] = useState<KpiEdit | null>(null)
 
   function openKpiEdit(empId: string, empName: string, date: string) {
     if (!isManager) return
     const existing = kpiMap[`${empId}|${date}`]
-    setKpiSelected(existing?.types ?? [])
-    setKpiNote(existing?.note ?? '')
     setSaveError(null)
-    setKpiEdit({ empId, empName, date })
+    setKpiEdit({
+      empId,
+      empName,
+      date,
+      initialTypes: existing?.types ?? [],
+      initialNote: existing?.note ?? '',
+    })
   }
-  function toggleKpiType(t: KpiViolationType) {
-    setKpiSelected(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])
-  }
-  async function saveKpi() {
+  async function saveKpi(types: KpiViolationType[], note: string) {
     if (!kpiEdit) return
     setSaveError(null)
     try {
-      await upsertKpiViolation({ employeeId: kpiEdit.empId, date: kpiEdit.date, types: kpiSelected, note: kpiNote })
+      await upsertKpiViolation({ employeeId: kpiEdit.empId, date: kpiEdit.date, types, note })
       await mutateKpi()
       setKpiEdit(null)
     } catch (e: any) {
@@ -796,47 +805,17 @@ export default function ChamCongPage() {
         </div>
       )}
 
-      {/* ══════════════════════════════════════════
-          MODAL: EDIT KPI
-          ══════════════════════════════════════════ */}
+      {/* MODAL: EDIT KPI — extracted to _components/KpiEditModal (Phase 6c) */}
       {kpiEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3" onClick={() => setKpiEdit(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-[320px] p-5" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">{kpiEdit.empName}</p>
-                <p className="text-xs text-gray-400">{kpiEdit.date} · KPI Chuyên cần</p>
-              </div>
-              <button onClick={() => setKpiEdit(null)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
-            </div>
-            <p className="text-[11px] font-medium text-gray-500 mb-2">Loại vi phạm (chọn nhiều)</p>
-            <div className="space-y-2 mb-4">
-              {KPI_TYPES.map(t => (
-                <label key={t} className={`flex items-center gap-3 px-3 py-2 rounded-xl border cursor-pointer transition-colors ${kpiSelected.includes(t) ? KPI_CONFIG[t].cls + ' border-opacity-100' : 'border-gray-200 hover:border-gray-300'}`}>
-                  <input type="checkbox" checked={kpiSelected.includes(t)} onChange={() => toggleKpiType(t)}
-                    className="rounded border-gray-300 text-rose-600 focus:ring-rose-500" />
-                  <div>
-                    <span className="text-xs font-bold">{t}</span>
-                    <span className="text-[11px] text-gray-500 ml-2">— {KPI_CONFIG[t].full}</span>
-                  </div>
-                </label>
-              ))}
-            </div>
-            <label className="block text-[11px] font-medium text-gray-500 mb-1.5">Ghi chú</label>
-            <input type="text" value={kpiNote} onChange={e => setKpiNote(e.target.value)} placeholder="Ghi chú vi phạm..."
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500/20 mb-4" />
-            {saveError && (
-              <div className="mb-3 flex items-start gap-2 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-[11px]">
-                <AlertTriangle size={13} className="shrink-0 mt-0.5"/>
-                <span className="leading-relaxed">{saveError}</span>
-              </div>
-            )}
-            <div className="flex gap-2">
-              <button onClick={() => { setKpiEdit(null); setSaveError(null) }} className="flex-1 py-2 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">Đóng</button>
-              <button onClick={saveKpi} className="flex-1 py-2 text-xs font-semibold bg-rose-600 text-white rounded-lg hover:bg-rose-700">Lưu</button>
-            </div>
-          </div>
-        </div>
+        <KpiEditModal
+          empName={kpiEdit.empName}
+          date={kpiEdit.date}
+          initialTypes={kpiEdit.initialTypes}
+          initialNote={kpiEdit.initialNote}
+          saveError={saveError}
+          onClose={() => { setKpiEdit(null); setSaveError(null) }}
+          onSave={saveKpi}
+        />
       )}
 
       {/* LOG DRAWER — extracted to _components/LogDrawer.tsx (Phase 6a) */}
