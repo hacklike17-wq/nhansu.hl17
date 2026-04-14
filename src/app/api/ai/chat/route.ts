@@ -174,6 +174,29 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // ── Phase 2.5 rate limit — company-wide monthly token cap ──────
+    if (config.monthlyTokenLimit > 0) {
+      const VN_OFFSET_MS = 7 * 60 * 60 * 1000
+      const nowVN = new Date(Date.now() + VN_OFFSET_MS)
+      const monthStart = new Date(Date.UTC(nowVN.getUTCFullYear(), nowVN.getUTCMonth(), 1))
+
+      const usage = await db.aiUsageLog.aggregate({
+        where: { companyId, month: monthStart },
+        _sum: { inputTokens: true, outputTokens: true },
+      })
+      const usedTokens = (usage._sum.inputTokens ?? 0) + (usage._sum.outputTokens ?? 0)
+      if (usedTokens >= config.monthlyTokenLimit) {
+        return NextResponse.json(
+          {
+            error:
+              `Công ty đã vượt hạn mức AI tháng này (${usedTokens.toLocaleString()} / ` +
+              `${config.monthlyTokenLimit.toLocaleString()} tokens). Liên hệ admin để nâng hạn mức.`,
+          },
+          { status: 429 }
+        )
+      }
+    }
+
     const role = clampRole(ctx.role)
 
     // Resolve or create the conversation
@@ -280,6 +303,40 @@ export async function POST(req: NextRequest) {
       where: { id: conversationId },
       data: { updatedAt: new Date() },
     })
+
+    // Phase 2.5 — accumulate monthly usage for (company, user). Atomic
+    // upsert so concurrent chats from the same user don't clobber each
+    // other. Best-effort: if this fails the chat still succeeds.
+    try {
+      const VN_OFFSET_MS = 7 * 60 * 60 * 1000
+      const nowVN = new Date(Date.now() + VN_OFFSET_MS)
+      const monthStart = new Date(Date.UTC(nowVN.getUTCFullYear(), nowVN.getUTCMonth(), 1))
+
+      await db.aiUsageLog.upsert({
+        where: {
+          companyId_userId_month: {
+            companyId,
+            userId: ctx.userId,
+            month: monthStart,
+          },
+        },
+        create: {
+          companyId,
+          userId: ctx.userId,
+          month: monthStart,
+          inputTokens: reply.inputTokens,
+          outputTokens: reply.outputTokens,
+          requestCount: 1,
+        },
+        update: {
+          inputTokens: { increment: reply.inputTokens },
+          outputTokens: { increment: reply.outputTokens },
+          requestCount: { increment: 1 },
+        },
+      })
+    } catch (e) {
+      console.warn("[ai/chat] usage log upsert failed:", e)
+    }
 
     return NextResponse.json({
       conversationId,

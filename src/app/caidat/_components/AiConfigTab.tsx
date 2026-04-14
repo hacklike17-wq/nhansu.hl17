@@ -1,8 +1,32 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { KeyRound, Save, Sparkles, Trash2, Loader2 } from 'lucide-react'
+import { KeyRound, Save, Sparkles, Trash2, Loader2, BarChart3 } from 'lucide-react'
 import { OPENAI_MODELS } from '@/lib/ai/providers/models'
 import { AI_PROVIDERS } from '@/lib/schemas/ai'
+
+type UsageResponse = {
+  month: string
+  provider: string
+  model: string
+  totals: {
+    inputTokens: number
+    outputTokens: number
+    totalTokens: number
+    requests: number
+    costUSD: number
+  }
+  limit: number
+  percentUsed: number
+  byUser: Array<{
+    userId: string
+    userName: string
+    userEmail: string
+    inputTokens: number
+    outputTokens: number
+    requestCount: number
+    costUSD: number
+  }>
+}
 
 type AiConfigResponse = {
   provider: string
@@ -76,6 +100,10 @@ export default function AiConfigTab() {
   const [testError, setTestError] = useState<string | null>(null)
   const [testUsage, setTestUsage] = useState<{ inputTokens: number; outputTokens: number; systemPromptChars?: number } | null>(null)
 
+  // Usage panel state
+  const [usage, setUsage] = useState<UsageResponse | null>(null)
+  const [usageLoading, setUsageLoading] = useState(false)
+
   // Load existing config
   useEffect(() => {
     let cancelled = false
@@ -104,6 +132,27 @@ export default function AiConfigTab() {
       })
     return () => { cancelled = true }
   }, [])
+
+  // Load current-month usage (admin only, no month param = current)
+  const loadUsage = async () => {
+    setUsageLoading(true)
+    try {
+      const res = await fetch('/api/ai/usage')
+      if (!res.ok) throw new Error('fetch failed')
+      const data: UsageResponse = await res.json()
+      setUsage(data)
+    } catch {
+      // Silent — usage panel is secondary info
+    } finally {
+      setUsageLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (loading) return
+    loadUsage()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading])
 
   const save = async () => {
     setSaveStatus('saving')
@@ -414,6 +463,99 @@ export default function AiConfigTab() {
         {testError && (
           <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
             {testError}
+          </div>
+        )}
+      </div>
+
+      {/* Usage panel */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <BarChart3 size={14} className="text-violet-600" />
+            <div className="text-sm font-bold text-gray-900">
+              Sử dụng tháng {usage?.month ?? ''}
+            </div>
+          </div>
+          <button
+            onClick={loadUsage}
+            disabled={usageLoading}
+            className="text-[10px] px-2 py-1 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {usageLoading ? 'Đang tải...' : 'Làm mới'}
+          </button>
+        </div>
+
+        {usage ? (
+          <>
+            {/* Progress bar */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between text-[11px] text-gray-600 mb-1 tabular-nums">
+                <span>
+                  {usage.totals.totalTokens.toLocaleString()} /{' '}
+                  {usage.limit > 0 ? usage.limit.toLocaleString() : '∞'} tokens
+                </span>
+                <span>
+                  ≈ ${usage.totals.costUSD.toFixed(4)} USD · {usage.totals.requests} request
+                </span>
+              </div>
+              {usage.limit > 0 && (
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all ${
+                      usage.percentUsed >= 90
+                        ? 'bg-red-500'
+                        : usage.percentUsed >= 70
+                          ? 'bg-amber-500'
+                          : 'bg-violet-500'
+                    }`}
+                    style={{ width: `${Math.min(100, usage.percentUsed)}%` }}
+                  />
+                </div>
+              )}
+              <div className="text-[10px] text-gray-400 mt-1">
+                Input {usage.totals.inputTokens.toLocaleString()} · Output {usage.totals.outputTokens.toLocaleString()} · Model {usage.model}
+                {usage.percentUsed >= 90 && usage.limit > 0 && (
+                  <span className="ml-2 text-red-600 font-semibold">⚠ Gần hết hạn mức</span>
+                )}
+              </div>
+            </div>
+
+            {/* Top users */}
+            {usage.byUser.length > 0 ? (
+              <div>
+                <div className="text-[11px] font-semibold text-gray-700 mb-2">Top người dùng</div>
+                <div className="divide-y divide-gray-100">
+                  {usage.byUser.slice(0, 10).map(u => {
+                    const tokens = u.inputTokens + u.outputTokens
+                    return (
+                      <div
+                        key={u.userId}
+                        className="flex items-center justify-between py-1.5 text-[11px]"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="text-gray-800 font-medium truncate">{u.userName}</div>
+                          <div className="text-gray-400 text-[10px] truncate">{u.userEmail}</div>
+                        </div>
+                        <div className="text-right shrink-0 ml-2 tabular-nums">
+                          <div className="text-gray-700">{tokens.toLocaleString()} tokens</div>
+                          <div className="text-gray-400 text-[10px]">
+                            {u.requestCount} req · ${u.costUSD.toFixed(4)}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="text-[11px] text-gray-400 text-center py-4">
+                Chưa có ai dùng AI tháng này.
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-[11px] text-gray-400 text-center py-4">
+            {usageLoading ? 'Đang tải dữ liệu...' : 'Không có dữ liệu'}
           </div>
         )}
       </div>

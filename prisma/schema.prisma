@@ -516,6 +516,26 @@ model AiMessage {
   @@map("ai_messages")
 }
 
+// One row per (company, user, month). Upserted atomically after every
+// successful chat turn. Phase 2.5 uses (input + output) sum vs AiConfig
+// .monthlyTokenLimit as the hard cap; admin usage panel shows the
+// breakdown.
+model AiUsageLog {
+  id           String   @id @default(cuid())
+  companyId    String
+  userId       String
+  month        DateTime @db.Date
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  requestCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([companyId, userId, month])
+  @@index([companyId, month])
+  @@map("ai_usage_logs")
+}
+
 // ──────────────────────────────────────────────────────────────
 // FINANCE
 // ──────────────────────────────────────────────────────────────
