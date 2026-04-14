@@ -2,8 +2,10 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Sparkles, X, Send, Loader2, AlertCircle, Wrench,
-  History, Trash2, ArrowLeft, MessageSquare,
+  History, Trash2, ArrowLeft, MessageSquare, Copy, Check,
 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useAuth } from '@/components/auth/AuthProvider'
 
 type ToolCallTrace = {
@@ -77,6 +79,91 @@ function formatRelativeTime(iso: string): string {
 }
 
 /**
+ * Assistant bubble content: markdown-rendered with GFM (tables, strikethrough,
+ * task lists, autolinks). Keep the renderer minimal — we don't need raw HTML.
+ * Tailwind classes on each element tune the inline styles to fit the 13px
+ * bubble width without overriding global prose styles.
+ */
+function AssistantMarkdown({ content }: { content: string }) {
+  return (
+    <div className="ai-md">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
+          strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
+          em: ({ children }) => <em className="italic">{children}</em>,
+          ul: ({ children }) => <ul className="list-disc ml-4 mb-2 last:mb-0 space-y-0.5">{children}</ul>,
+          ol: ({ children }) => <ol className="list-decimal ml-4 mb-2 last:mb-0 space-y-0.5">{children}</ol>,
+          li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+          code: ({ children, className }) => {
+            const isBlock = (className ?? '').startsWith('language-')
+            if (isBlock) {
+              return (
+                <pre className="my-2 p-2 bg-gray-900 text-gray-100 rounded text-[11px] overflow-x-auto">
+                  <code>{children}</code>
+                </pre>
+              )
+            }
+            return <code className="px-1 py-0.5 rounded bg-gray-100 text-[12px] font-mono">{children}</code>
+          },
+          a: ({ children, href }) => (
+            <a href={href} target="_blank" rel="noreferrer" className="text-violet-700 underline">
+              {children}
+            </a>
+          ),
+          table: ({ children }) => (
+            <div className="my-2 overflow-x-auto">
+              <table className="text-[11px] border-collapse">{children}</table>
+            </div>
+          ),
+          th: ({ children }) => (
+            <th className="border border-gray-200 bg-gray-50 px-2 py-1 text-left font-semibold">
+              {children}
+            </th>
+          ),
+          td: ({ children }) => <td className="border border-gray-200 px-2 py-1">{children}</td>,
+          h1: ({ children }) => <h1 className="text-sm font-bold mb-1">{children}</h1>,
+          h2: ({ children }) => <h2 className="text-sm font-bold mb-1">{children}</h2>,
+          h3: ({ children }) => <h3 className="text-[13px] font-bold mb-1">{children}</h3>,
+          blockquote: ({ children }) => (
+            <blockquote className="border-l-2 border-gray-300 pl-2 text-gray-600 italic my-2">
+              {children}
+            </blockquote>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  )
+}
+
+/** Small copy-to-clipboard button used by assistant bubbles. */
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  const onClick = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // clipboard might be blocked (http / permissions) — silently ignore
+    }
+  }
+  return (
+    <button
+      onClick={onClick}
+      className="text-gray-300 hover:text-gray-600 p-1 rounded transition opacity-0 group-hover:opacity-100"
+      title={copied ? 'Đã copy' : 'Copy'}
+      aria-label="Copy"
+    >
+      {copied ? <Check size={12} className="text-green-600" /> : <Copy size={12} />}
+    </button>
+  )
+}
+
+/**
  * Floating chat widget with conversation history.
  *
  * Bottom-right bubble; click to open a 460x600 panel. Open to any
@@ -113,6 +200,16 @@ export default function ChatWidget() {
   const [restoring, setRestoring] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Auto-resize textarea: grow with content up to ~5 lines, then scroll.
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    const next = Math.min(el.scrollHeight, 120) // ≈ 5 lines at 13px
+    el.style.height = `${next}px`
+  }, [input])
 
   const canUseAI = !!user
 
@@ -443,7 +540,7 @@ export default function ChatWidget() {
               {messages.map(m => (
                 <div
                   key={m.id}
-                  className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
+                  className={`flex flex-col group ${m.role === 'user' ? 'items-end' : 'items-start'}`}
                 >
                   {m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0 && (
                     <div className="max-w-[95%] mb-1 text-[10px] text-gray-500 flex flex-wrap gap-1">
@@ -459,15 +556,18 @@ export default function ChatWidget() {
                       ))}
                     </div>
                   )}
-                  <div
-                    className={`${
-                      m.role === 'user'
-                        ? 'max-w-[85%] bg-blue-600 text-white rounded-br-sm'
-                        : 'max-w-[95%] bg-white border border-gray-200 text-gray-800 rounded-bl-sm'
-                    } px-3.5 py-2.5 rounded-2xl text-[13px] whitespace-pre-wrap leading-relaxed`}
-                  >
-                    {m.content}
-                  </div>
+                  {m.role === 'user' ? (
+                    <div className="max-w-[85%] bg-blue-600 text-white rounded-br-sm px-3.5 py-2.5 rounded-2xl text-[13px] whitespace-pre-wrap leading-relaxed">
+                      {m.content}
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-1 max-w-[95%]">
+                      <div className="bg-white border border-gray-200 text-gray-800 rounded-2xl rounded-bl-sm px-3.5 py-2.5 text-[13px] leading-relaxed flex-1 min-w-0">
+                        <AssistantMarkdown content={m.content} />
+                      </div>
+                      <CopyButton text={m.content} />
+                    </div>
+                  )}
                 </div>
               ))}
 
@@ -496,13 +596,14 @@ export default function ChatWidget() {
             <div className="border-t border-gray-200 px-3 py-3 bg-white">
               <div className="flex items-end gap-2">
                 <textarea
+                  ref={textareaRef}
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={onKeyDown}
-                  placeholder="Nhập câu hỏi... (Enter để gửi, Shift+Enter xuống dòng)"
+                  placeholder="Nhập câu hỏi... (Enter gửi, Shift+Enter xuống dòng)"
                   rows={1}
                   disabled={sending}
-                  className="flex-1 resize-none text-xs border border-gray-200 rounded-lg px-3 py-2 max-h-24 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 disabled:opacity-50"
+                  className="flex-1 resize-none text-[13px] leading-relaxed border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 disabled:opacity-50 overflow-y-auto"
                 />
                 <button
                   onClick={send}
