@@ -1,5 +1,6 @@
 import { db } from "@/lib/db"
 import { evalFormula, buildDependencyGraph, topologicalSort, extractVars } from "@/lib/formula"
+import { calcPIT, calcPITFallback } from "@/lib/payroll/pit"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,45 +58,7 @@ async function getPITBrackets(companyId: string) {
   return brackets
 }
 
-/** Tính PIT lũy tiến theo khung thuế */
-function calcPIT(
-  taxableIncome: number,
-  brackets: Awaited<ReturnType<typeof getPITBrackets>>
-): number {
-  if (taxableIncome <= 0) return 0
-  let pit = 0
-  for (const b of brackets) {
-    const min = toNum(b.minIncome)
-    const max = b.maxIncome ? toNum(b.maxIncome) : Infinity
-    const rate = toNum(b.rate)
-    if (taxableIncome <= min) break
-    const slice = Math.min(taxableIncome, max) - min
-    pit += slice * rate
-  }
-  return Math.round(pit)
-}
-
-/** Fallback PIT brackets nếu DB chưa có */
-const FALLBACK_BRACKETS = [
-  { min: 0,          max: 5_000_000,  rate: 0.05 },
-  { min: 5_000_000,  max: 10_000_000, rate: 0.1  },
-  { min: 10_000_000, max: 18_000_000, rate: 0.15 },
-  { min: 18_000_000, max: 32_000_000, rate: 0.2  },
-  { min: 32_000_000, max: 52_000_000, rate: 0.25 },
-  { min: 52_000_000, max: 80_000_000, rate: 0.3  },
-  { min: 80_000_000, max: Infinity,   rate: 0.35 },
-]
-
-function calcPITFallback(taxableIncome: number): number {
-  if (taxableIncome <= 0) return 0
-  let pit = 0
-  for (const b of FALLBACK_BRACKETS) {
-    if (taxableIncome <= b.min) break
-    const slice = Math.min(taxableIncome, b.max) - b.min
-    pit += slice * b.rate
-  }
-  return Math.round(pit)
-}
+// calcPIT / calcPITFallback moved to src/lib/payroll/pit.ts (Phase 5a).
 
 // ─── Result type ──────────────────────────────────────────────────────────────
 
