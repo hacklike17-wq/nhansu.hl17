@@ -61,7 +61,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const parsed = parseMatrixSheet(targetWs)
+    const [hintY, hintM] = month.split("-").map(Number)
+    const parsed = parseMatrixSheet(targetWs, { year: hintY, month: hintM })
     if (parsed.errors.length > 0) {
       return NextResponse.json(
         {

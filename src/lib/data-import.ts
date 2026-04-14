@@ -155,7 +155,7 @@ export function planWorkUnitsImport(
   ws: ExcelJS.Worksheet,
   ctx: ImportCtx
 ): ImportPlan<WorkUnitRow> {
-  const parsed = parseMatrixSheet(ws)
+  const parsed = parseMatrixSheet(ws, { year: ctx.monthStart.getUTCFullYear(), month: ctx.monthStart.getUTCMonth() + 1 })
   const errors: ErrorRow[] = parsed.errors.map(e => ({
     row: e.row,
     message: e.message,
@@ -248,7 +248,7 @@ export function planOvertimeImport(
   ws: ExcelJS.Worksheet,
   ctx: ImportCtx
 ): ImportPlan<OvertimeRow> {
-  const parsed = parseMatrixSheet(ws)
+  const parsed = parseMatrixSheet(ws, { year: ctx.monthStart.getUTCFullYear(), month: ctx.monthStart.getUTCMonth() + 1 })
   const errors: ErrorRow[] = parsed.errors.map(e => ({
     row: e.row,
     message: e.message,
@@ -339,7 +339,7 @@ export function planKpiImport(
   ws: ExcelJS.Worksheet,
   ctx: ImportCtx
 ): ImportPlan<KpiRow> {
-  const parsed = parseMatrixSheet(ws)
+  const parsed = parseMatrixSheet(ws, { year: ctx.monthStart.getUTCFullYear(), month: ctx.monthStart.getUTCMonth() + 1 })
   const errors: ErrorRow[] = parsed.errors.map(e => ({
     row: e.row,
     message: e.message,

@@ -102,14 +102,22 @@ export function findHeaderRow(ws: ExcelJS.Worksheet, maxScan = 20): number {
  * looks like:
  *   TT │ MÃ NV │ TÊN NV │ CHỨC VỤ │ [date 1] │ [date 2] │ ... │ [date 31]
  *
- * Day columns are any cell in the header row whose value is a Date. We also
- * accept columns where the cell is empty in the header but the cell ONE row
- * below has a day-of-week string (CN/T2/…) — this handles the case where the
- * sheet author merged the date into a single row above.
+ * Day extraction strategy (in priority order):
+ *   1. If the header cell is a Date → use its day-of-month (1-31)
+ *   2. If the cell 2 rows below the header (the sequential-day subheader
+ *      that sits under the day-of-week row) is a number 1-31 → use that
+ *   3. Column is ignored otherwise
+ *
+ * The actual year+month come from `monthHint`, NOT from the sheet — many
+ * real-world templates have broken date formulas that resolve to bogus
+ * years (e.g. 2070/2071 due to a formula referencing the wrong cell).
+ * Honoring the user's month picker instead of the sheet keeps imports
+ * robust against that kind of template corruption.
  */
 export function resolveColumnLayout(
   ws: ExcelJS.Worksheet,
-  headerRow: number
+  headerRow: number,
+  monthHint: { year: number; month: number } // month = 1-12
 ): {
   empCodeCol: number
   empNameCol: number
@@ -127,6 +135,12 @@ export function resolveColumnLayout(
   let empCodeCol = -1
   let empNameCol = -1
   let positionCol = -1
+
+  // Number of days in the hinted month — columns whose extracted day
+  // overflows this boundary are dropped (e.g. importing a 31-col sheet
+  // into February we take only cols 1-28).
+  const daysInHintMonth = new Date(monthHint.year, monthHint.month, 0).getDate()
+
   const dayCols: Array<{ col: number; date: Date }> = []
 
   for (let c = 1; c <= ws.columnCount; c++) {
@@ -136,8 +150,26 @@ export function resolveColumnLayout(
       if (key === "MA NV") empCodeCol = c
       else if (key === "TEN NV" || key === "HO VA TEN") empNameCol = c
       else if (key === "CHUC VU") positionCol = c
-    } else if (raw instanceof Date) {
-      dayCols.push({ col: c, date: raw })
+      continue
+    }
+
+    // Try to extract a day number from this column
+    let day: number | null = null
+
+    if (raw instanceof Date) {
+      day = raw.getUTCDate()
+    } else {
+      // Fallback: look 2 rows below for a sequential day-number row
+      // (header / day-of-week / day-number pattern common in VN templates)
+      const below = unwrapCellValue(ws.getRow(headerRow + 2).getCell(c).value)
+      if (typeof below === "number" && below >= 1 && below <= 31) {
+        day = Math.floor(below)
+      }
+    }
+
+    if (day != null && day >= 1 && day <= daysInHintMonth) {
+      const date = new Date(Date.UTC(monthHint.year, monthHint.month - 1, day))
+      dayCols.push({ col: c, date })
     }
   }
 
@@ -149,8 +181,14 @@ export function resolveColumnLayout(
  * cells — callers map `raw` into their own domain type (work_units has
  * numeric units + "KL"; overtime has numeric hours; kpi-violations has a
  * boolean/numeric marker).
+ *
+ * `monthHint` tells the parser what year+month to stamp onto extracted day
+ * numbers. See `resolveColumnLayout` for the full extraction strategy.
  */
-export function parseMatrixSheet(ws: ExcelJS.Worksheet): {
+export function parseMatrixSheet(
+  ws: ExcelJS.Worksheet,
+  monthHint: { year: number; month: number }
+): {
   headerRow: number
   empCodeCol: number
   dayCols: Array<{ col: number; date: Date }>
@@ -164,7 +202,7 @@ export function parseMatrixSheet(ws: ExcelJS.Worksheet): {
     return { headerRow: -1, empCodeCol: -1, dayCols: [], cells: [], errors }
   }
 
-  const { empCodeCol, dayCols } = resolveColumnLayout(ws, headerRow)
+  const { empCodeCol, dayCols } = resolveColumnLayout(ws, headerRow, monthHint)
   if (empCodeCol < 0) {
     errors.push({ row: headerRow, message: "Không có cột MÃ NV ở dòng header" })
     return { headerRow, empCodeCol, dayCols, cells: [], errors }
