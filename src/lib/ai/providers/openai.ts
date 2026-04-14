@@ -1,8 +1,22 @@
 import OpenAI from "openai"
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions"
+import {
+  toolToOpenAISchema,
+  type ToolContext,
+  type ToolDefinition,
+  type ToolResult,
+} from "@/lib/ai/tools"
 
 export type ChatMessage = {
   role: "user" | "assistant"
   content: string
+}
+
+export type ToolCallLog = {
+  name: string
+  args: Record<string, unknown>
+  result: ToolResult
+  durationMs: number
 }
 
 /**
@@ -76,12 +90,116 @@ export async function openaiChat(
   }
 }
 
-/** Catalog of OpenAI models we expose in the config UI. */
-export const OPENAI_MODELS = [
-  { id: "gpt-4o-mini", label: "GPT-4o mini (rẻ, nhanh)" },
-  { id: "gpt-4o", label: "GPT-4o (cân bằng)" },
-  { id: "gpt-4.1-mini", label: "GPT-4.1 mini" },
-  { id: "gpt-4.1", label: "GPT-4.1" },
-  { id: "gpt-5-mini", label: "GPT-5 mini" },
-  { id: "gpt-5", label: "GPT-5" },
-] as const
+/**
+ * Phase 2.2 chat call WITH tool calling. Runs an iterative loop: ask the
+ * model → if it wants to call tools, execute them server-side → feed the
+ * results back → repeat until the model returns plain text or we hit the
+ * hard iteration cap.
+ *
+ * Tool execution is hard-scoped by `ctx` — the LLM never sees or influences
+ * companyId/employeeId; those come from the authenticated session.
+ */
+const MAX_TOOL_LOOP_ITERATIONS = 5
+
+export async function openaiChatWithTools(
+  apiKey: string,
+  model: string,
+  systemPrompt: string,
+  history: ChatMessage[],
+  tools: ToolDefinition[],
+  ctx: ToolContext
+): Promise<{
+  text: string
+  inputTokens: number
+  outputTokens: number
+  toolCalls: ToolCallLog[]
+}> {
+  const client = new OpenAI({ apiKey })
+  const toolSchemas = tools.map(toolToOpenAISchema)
+
+  const messages: ChatCompletionMessageParam[] = [
+    { role: "system", content: systemPrompt },
+    ...history.map(m => ({ role: m.role, content: m.content }) as ChatCompletionMessageParam),
+  ]
+
+  let totalInputTokens = 0
+  let totalOutputTokens = 0
+  const toolCallsLog: ToolCallLog[] = []
+
+  for (let iter = 0; iter < MAX_TOOL_LOOP_ITERATIONS; iter++) {
+    const res = await client.chat.completions.create({
+      model,
+      messages,
+      tools: toolSchemas.length > 0 ? toolSchemas : undefined,
+      max_completion_tokens: 1000,
+    })
+
+    totalInputTokens += res.usage?.prompt_tokens ?? 0
+    totalOutputTokens += res.usage?.completion_tokens ?? 0
+
+    const choice = res.choices[0]
+    const msg = choice?.message
+    if (!msg) break
+
+    const calls = msg.tool_calls ?? []
+    if (calls.length === 0) {
+      // Final answer — no more tool calls requested.
+      return {
+        text: (msg.content ?? "").trim(),
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+        toolCalls: toolCallsLog,
+      }
+    }
+
+    // Push the assistant message so the tool results can reference its tool_call_ids.
+    messages.push(msg as ChatCompletionMessageParam)
+
+    // Execute each requested tool, append the result as a "tool" message.
+    for (const call of calls) {
+      if (call.type !== "function") continue
+      const name = call.function.name
+      let args: Record<string, unknown> = {}
+      try {
+        args = call.function.arguments ? JSON.parse(call.function.arguments) : {}
+      } catch {
+        args = { _parseError: true, raw: call.function.arguments }
+      }
+
+      const tool = tools.find(t => t.name === name)
+      const start = Date.now()
+      let result: ToolResult
+      if (!tool) {
+        result = { ok: false, error: `Tool không tồn tại: ${name}` }
+      } else {
+        try {
+          result = await tool.execute(args, ctx)
+        } catch (e: any) {
+          result = { ok: false, error: e?.message ?? "Lỗi thực thi tool" }
+        }
+      }
+      const durationMs = Date.now() - start
+
+      toolCallsLog.push({ name, args, result, durationMs })
+
+      messages.push({
+        role: "tool",
+        tool_call_id: call.id,
+        content: JSON.stringify(result),
+      } as ChatCompletionMessageParam)
+    }
+  }
+
+  return {
+    text:
+      "(Đã đạt giới hạn vòng lặp công cụ. Vui lòng chia nhỏ câu hỏi hoặc thử lại.)",
+    inputTokens: totalInputTokens,
+    outputTokens: totalOutputTokens,
+    toolCalls: toolCallsLog,
+  }
+}
+
+// Catalog of OpenAI models lives in ./models.ts (client-safe — no server
+// imports). Re-export to keep the old import path working for server code
+// that already imported from here.
+export { OPENAI_MODELS } from "./models"

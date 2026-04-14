@@ -1,13 +1,20 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { Sparkles, X, Send, Loader2, AlertCircle } from 'lucide-react'
+import { Sparkles, X, Send, Loader2, AlertCircle, Wrench } from 'lucide-react'
 import { useAuth } from '@/components/auth/AuthProvider'
+
+type ToolCallTrace = {
+  name: string
+  args: Record<string, unknown>
+  durationMs: number
+}
 
 type ChatMsg = {
   id: string
   role: 'user' | 'assistant'
   content: string
   createdAt?: string
+  toolCalls?: ToolCallTrace[]
 }
 
 type ChatResponse = {
@@ -19,7 +26,7 @@ type ChatResponse = {
 
 /**
  * Phase 2.1 floating chat widget. Bottom-right bubble; click to open a
- * 460x600 panel. Admin only for now — manager/employee will be opened in
+ * 400x550 panel. Admin only for now — manager/employee will be opened in
  * Phase 2.3 once their tool scope is implemented.
  *
  * Stateless on reload: the widget forgets the conversation when the page
@@ -158,9 +165,9 @@ export default function ChatWidget() {
               <div className="text-center text-xs text-gray-400 pt-10 px-4">
                 <Sparkles size={24} className="mx-auto mb-2 text-violet-300" />
                 <p className="font-semibold text-gray-500 mb-1">Bắt đầu hội thoại</p>
-                <p>Hỏi về quy tắc KPI, nội quy, quy trình...</p>
+                <p>Hỏi về quy tắc, nội quy, hoặc số liệu công ty.</p>
                 <p className="mt-2 text-[10px] text-gray-400">
-                  Phase 2.1 chưa đọc được DB — câu hỏi số liệu cá nhân sẽ trả về "chưa hỗ trợ".
+                  Admin có 5 công cụ: tổng quan, danh sách NV, phiếu lương, chấm công, vi phạm KPI.
                 </p>
               </div>
             )}
@@ -168,8 +175,22 @@ export default function ChatWidget() {
             {messages.map(m => (
               <div
                 key={m.id}
-                className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
               >
+                {m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0 && (
+                  <div className="max-w-[95%] mb-1 text-[10px] text-gray-500 flex flex-wrap gap-1">
+                    {m.toolCalls.map((tc, i) => (
+                      <span
+                        key={i}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-50 border border-violet-200 text-violet-700"
+                        title={`${tc.durationMs}ms · ${JSON.stringify(tc.args)}`}
+                      >
+                        <Wrench size={9} />
+                        {tc.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div
                   className={`${
                     m.role === 'user'

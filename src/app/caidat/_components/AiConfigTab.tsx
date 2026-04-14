@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { KeyRound, Save, Sparkles, Trash2, Loader2 } from 'lucide-react'
-import { OPENAI_MODELS } from '@/lib/ai/providers/openai'
+import { OPENAI_MODELS } from '@/lib/ai/providers/models'
 import { AI_PROVIDERS } from '@/lib/schemas/ai'
 
 type AiConfigResponse = {

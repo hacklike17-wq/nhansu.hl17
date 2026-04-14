@@ -3,7 +3,8 @@ import { db } from "@/lib/db"
 import { requireSession, errorResponse } from "@/lib/permission"
 import { ChatMessageSchema } from "@/lib/schemas/ai"
 import { decryptApiKey } from "@/lib/ai/crypto"
-import { openaiChat, type ChatMessage } from "@/lib/ai/providers/openai"
+import { openaiChatWithTools, type ChatMessage } from "@/lib/ai/providers/openai"
+import { getToolsForRole } from "@/lib/ai/tools"
 
 /**
  * Phase 2.1: text-only chat. Assembles the exact system prompt the user's
@@ -58,21 +59,50 @@ function buildSystemPrompt(
     )
   }
 
-  parts.push(
-    [
-      "LƯU Ý VỀ PHẠM VI TRẢ LỜI (Phase 2.1):",
-      "",
-      "1) Câu hỏi về QUY TẮC / CÔNG THỨC / BẢNG (mức phạt, điểm trừ, bảng quỹ thưởng, điều kiện KPI, phúc lợi, công tác phí, thời gian làm việc, quy trình kỷ luật…):",
-      "   → TRẢ LỜI TRỰC TIẾP dựa vào NỘI QUY ở trên. Trích dẫn chính xác con số trong nội quy.",
-      "   → Nếu user hỏi dạng 'nếu X thì Y thế nào?' → thực hiện phép tính theo đúng công thức trong nội quy và đưa ra kết quả cụ thể kèm cách tính.",
-      "   → Nếu dữ kiện đầu vào chưa đủ (ví dụ chưa biết điểm hiện tại của user), hãy nêu ra các trường hợp theo từng mức trong bảng, KHÔNG được trả lời 'chưa có dữ liệu'.",
-      "",
-      "2) Câu hỏi về SỐ LIỆU THỰC TẠI TỪNG NGƯỜI (lương tháng X của họ, tổng công đi được, điểm KPI đã tích luỹ, số ngày phép còn, chi tiết vi phạm của họ…):",
-      "   → Bạn CHƯA có công cụ truy vấn cơ sở dữ liệu, nói ngắn gọn: 'Tính năng tra cứu dữ liệu cá nhân đang được phát triển (Phase 2.2). Hiện tại tôi chỉ có thể giải thích quy tắc.'",
-      "",
-      "3) KHÔNG được từ chối trả lời chỉ vì câu hỏi có từ 'quỹ thưởng', 'lương', 'điểm', 'công'. Chỉ từ chối khi câu hỏi YÊU CẦU tra số liệu cụ thể của cá nhân đó.",
-    ].join("\n")
-  )
+  if (role === "admin") {
+    parts.push(
+      [
+        "=== CẤP BẬC & QUYỀN HẠN HỆ THỐNG ===",
+        "Hệ thống có 3 vai trò (role) cố định — mỗi nhân viên được gán ĐÚNG 1 vai trò:",
+        "",
+        "  1. admin    — 'Quản trị viên': toàn quyền ('*'). Cấu hình hệ thống, cấu hình lương, quản lý nhân sự, phân quyền, AI config, v.v.",
+        "  2. manager  — 'Quản lý': có các quyền xem/sửa theo module — nhanvien.view, nhanvien.edit, chamcong.view, chamcong.edit, luong.view, luong.edit, tuyendung.*, nghiphep.*, doanhthu.view, chiphi.view, dongtien.view, ngansach.view, congno.view, baocao.view, dashboard.view. KHÔNG có quyền sửa cấu hình hệ thống và không cấu hình được AI.",
+        "  3. employee — 'Nhân viên': chỉ xem thông tin cá nhân (dashboard.view, luong.view, chamcong.view, nghiphep.view + nghiphep.edit để tự gửi đơn).",
+        "",
+        "LƯU Ý về AI chat (Phase hiện tại): cả manager và employee đều chỉ xem được dữ liệu CỦA HỌ, chưa có tool truy vấn toàn công ty. Admin (vai trò của bạn đang phục vụ) có đủ 5 tool.",
+        "",
+        "Khi user hỏi 'ai là quản lý', 'ai là admin', 'danh sách manager'… → gọi list_employees với `role` filter tương ứng rồi liệt kê.",
+        "",
+        "=== CÔNG CỤ TRUY VẤN DỮ LIỆU (chỉ admin) ===",
+        "Bạn ĐÃ có 5 tool để đọc dữ liệu thật trong hệ thống HR:",
+        "  • get_company_overview(month?)                           — tổng quan công ty 1 tháng (headcount, tổng lương, KPI vp, payroll status)",
+        "  • list_employees(department?, status?, role?, limit?)    — danh sách NV theo phòng/trạng thái/vai trò, tối đa 50. Output gồm cả `role` của từng người.",
+        "  • get_employee_payroll(employeeId, month?)               — phiếu lương chi tiết 1 NV (ID cuid hoặc mã NV, ví dụ 'NV011')",
+        "  • get_attendance_summary(month?, department?)            — tóm tắt chấm công, top đi nhiều/ít",
+        "  • get_kpi_violations(month?, department?)                — tổng vi phạm KPI + top người vi phạm",
+        "",
+        "NGUYÊN TẮC DÙNG TOOL:",
+        "1) Khi user hỏi SỐ LIỆU THỰC (tổng, trung bình, chi tiết của 1 người, danh sách, xếp hạng, ai là/có vai trò gì) → BẮT BUỘC gọi tool trước, KHÔNG được đoán.",
+        "2) Nếu user chỉ hỏi về QUY TẮC/CÔNG THỨC → trả lời trực tiếp từ NỘI QUY ở trên, KHÔNG cần tool.",
+        "3) Nếu user hỏi về CẤP BẬC HỆ THỐNG / QUYỀN CỦA ROLE → trả lời trực tiếp từ mục CẤP BẬC & QUYỀN HẠN ở trên, KHÔNG cần tool.",
+        "4) Mặc định tool sẽ lấy tháng hiện tại nếu không truyền `month`. Nếu user nói 'tháng 4' → truyền '2026-04' (dựa năm hiện tại).",
+        "5) Sau khi tool trả kết quả, TRÍCH DẪN con số/tên cụ thể trong câu trả lời + giải thích ngắn.",
+        "6) Nếu tool trả `{ ok: false, error: ... }`, báo lỗi trung thực cho user, đừng bịa.",
+      ].join("\n")
+    )
+  } else {
+    parts.push(
+      [
+        "LƯU Ý VỀ PHẠM VI TRẢ LỜI:",
+        "",
+        "1) Câu hỏi về QUY TẮC / CÔNG THỨC / BẢNG → TRẢ LỜI TRỰC TIẾP dựa vào NỘI QUY ở trên. Trích dẫn chính xác con số. Nếu user hỏi dạng 'nếu X thì Y thế nào?' → tính toán theo rule và đưa kết quả. Nếu thiếu dữ kiện, nêu theo từng mức.",
+        "",
+        "2) Câu hỏi về SỐ LIỆU THỰC TẠI TỪNG NGƯỜI (lương tháng X của bạn, tổng công, điểm KPI thực tế…) → Bạn CHƯA có công cụ truy vấn cơ sở dữ liệu. Nói ngắn gọn: 'Tính năng tra cứu dữ liệu cá nhân đang được phát triển (Phase 2.3). Hiện tại tôi chỉ có thể giải thích quy tắc.'",
+        "",
+        "3) KHÔNG được từ chối trả lời chỉ vì câu hỏi có từ 'quỹ thưởng', 'lương', 'điểm', 'công'. Chỉ từ chối khi câu hỏi YÊU CẦU tra số liệu cụ thể của cá nhân đó.",
+      ].join("\n")
+    )
+  }
 
   return parts.join("\n\n")
 }
@@ -187,9 +217,40 @@ export async function POST(req: NextRequest) {
       companyRules: config.companyRules,
     })
 
-    let reply: { text: string; inputTokens: number; outputTokens: number }
+    const tools = getToolsForRole(role)
+    let reply: {
+      text: string
+      inputTokens: number
+      outputTokens: number
+      toolCalls: Array<{ name: string; args: Record<string, unknown>; durationMs: number }>
+    }
     try {
-      reply = await openaiChat(apiKey, config.model, systemPrompt, history)
+      const raw = await openaiChatWithTools(
+        apiKey,
+        config.model,
+        systemPrompt,
+        history,
+        tools,
+        {
+          companyId,
+          userId: ctx.userId,
+          role,
+          employeeId: ctx.employeeId ?? null,
+        }
+      )
+      reply = {
+        text: raw.text,
+        inputTokens: raw.inputTokens,
+        outputTokens: raw.outputTokens,
+        // Strip the `result` before returning to client — tool results may
+        // contain internal data we don't want to expose. Keep name/args for
+        // a simple "AI đã gọi tool X" trace in the UI.
+        toolCalls: raw.toolCalls.map(c => ({
+          name: c.name,
+          args: c.args,
+          durationMs: c.durationMs,
+        })),
+      }
     } catch (e: any) {
       const msg = e?.message ?? "Lỗi không xác định khi gọi provider"
       const status = typeof e?.status === "number" ? e.status : 502
@@ -227,6 +288,7 @@ export async function POST(req: NextRequest) {
           role: "assistant",
           content: assistantMessageRow.content,
           createdAt: assistantMessageRow.createdAt,
+          toolCalls: reply.toolCalls,
         },
       ],
       usage: {
