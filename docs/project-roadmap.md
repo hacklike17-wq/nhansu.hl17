@@ -42,19 +42,31 @@ The system migrated from a localStorage-based prototype to a full-stack PostgreS
 - Feedback messages for payroll status transitions
 - Session `companyId` propagation fix
 
+### Payroll Normalization & Dashboard Fixes (2026-04-13)
+
+| Commit | Description |
+|--------|-------------|
+| `b63acbb` | Dashboard: `missingAttendanceCount` excludes employees with non-DRAFT payrolls; `lockedEmployeeIdsForMonth` helper introduced |
+| `a57b0cd` | Dashboard: manager-team rows ordered by `Employee.createdAt asc` (matches payroll table); KPI count sums `types[].length` not row count; `monthWorkUnits` no longer rounded via `.toFixed(0)` |
+| `339820e` | Chamcong: DELETE bulk wipe and auto-fill createMany now trigger `autoRecalcDraftPayroll` / `recalculateMonth`; closes the WorkUnit → payroll sync loop |
+| `cb8cc13` | Payroll refactor: `SalaryValue` keys normalized to match `SalaryColumn.key` (`phu_cap` → `tien_phu_cap`, `phat` → `tien_tru_khac`); DB FK added on `salary_values(companyId, columnKey)` → `salary_columns(companyId, key)` |
+| `e914a3b` | Payroll refactor: dropped 4 legacy scalar fields from `payrolls` table (`kpiBonus`, `bonus`, `kpiTrachNhiem`, `otherDeductions`); `PersonalSalaryView` updated; "Phạt" label renamed to "Trừ khác" |
+| `59979d3` | Employee: self-edit branch in `PATCH /api/employees/[id]` with `SELF_EDITABLE_FIELDS` whitelist; manager column picker with localStorage persistence; employee self-profile field picker |
+
 ---
 
 ## Current State (2026-04-13)
 
 **What is fully working:**
 - Authentication (login, JWT sessions, RBAC middleware)
-- Employee management CRUD + soft delete
-- Attendance: WorkUnit, OvertimeEntry, KpiViolation, DeductionEvent
-- Payroll: full calculation engine + workflow + anomaly detection + Excel export
+- Employee management CRUD + soft delete + employee self-edit (personal/bank fields)
+- Attendance: WorkUnit, OvertimeEntry, KpiViolation, DeductionEvent; all three WorkUnit mutation paths trigger DRAFT payroll recalc
+- Payroll: full calculation engine + workflow + anomaly detection + Excel export; 3-tier normalized data model (salary_columns → salary_values → payrolls) with DB FK enforcement
 - Leave requests: approval with batch DeductionEvent creation
 - Settings: PITBracket, InsuranceRate, SalaryColumn CRUD
 - Permission groups: CRUD + system group protection
 - Formula versioning with historical recalculation
+- Manager dashboard: live team status table + action queue from DB (no static data)
 
 **What is using static data (not yet backend-connected):**
 - Dashboard KPI cards and charts (static from `constants/data.ts`)
@@ -195,10 +207,11 @@ WebSocket or Server-Sent Events for:
 |------|----------|-------|
 | Finance modules use static data | High | No backend API for doanhthu, chiphi, etc. |
 | Seed.ts missing production guard | High | Add `if (NODE_ENV === "production") throw` |
+| Migration history drift | High | `prisma/migrations/` has 3 files; DB schema has drifted due to `prisma db execute` changes. Do NOT run `prisma migrate dev` against live data. Use `prisma db execute` for future incremental changes and update `schema.prisma` manually. |
 | `as any` casts in Route Handlers | Medium | Auth.js session type augmentation not fully propagated |
 | Personal deduction hardcoded | Medium | Move 11,000,000 to DB config before July 2026 reform |
 | No rate limiting on login endpoint | Medium | Implement via hosting WAF or middleware |
-| Static dashboard data | Medium | Replace with real DB aggregates |
+| Static dashboard data | Medium | Manager dashboard now live; finance/KPI cards still static |
 | Recruitment has no backend | Low | Static data only |
 | Reports page has no real export | Low | Catalog exists; actual report generation not implemented |
 | No test coverage for Route Handlers | Low | Integration tests needed for API layer |

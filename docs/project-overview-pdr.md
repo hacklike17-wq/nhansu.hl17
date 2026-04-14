@@ -69,6 +69,8 @@ The system is fully operational with:
 - Employee status table for the current day
 - Budget breakdown by category
 - Cost structure donut chart
+- **Manager overview** (`GET /api/dashboard/manager-overview`): today's pulse (working/absent/unpaid-leave counts), action queue (missing attendance, DRAFT payrolls, pending leaves), month progress bar. `missingAttendanceCount` excludes employees whose current-month payroll is not DRAFT — chamcong-guard blocks mutations for those, so missing rows are not actionable.
+- **Manager team table** (`GET /api/dashboard/manager-team`): one row per active employee with today's status, monthly công total, KPI violation count, and payroll status. Rows ordered by `Employee.createdAt asc` to match the `/api/payroll` table order. KPI violation count sums `types[].length` across all `KpiViolation` rows for the month (not the row count), matching the source-of-truth `attendance-kpi` endpoint. `monthWorkUnits` displayed without rounding (e.g., `11.5` not `12`).
 
 ### FR-04: Employee Management (Nhân viên)
 
@@ -79,15 +81,23 @@ The system is fully operational with:
 - Soft delete (`deletedAt`) — resigned employees preserved for payroll audit trail
 - CRUD via Route Handlers at `/api/employees`
 - `employee` role sees only own record (enforced server-side in Route Handler via session `employeeId`)
+- **Employee self-edit**: `PATCH /api/employees/[id]` has an implicit self-edit branch — if `ctx.role === "employee" && ctx.employeeId === id`, the `nhanvien.edit` permission check is bypassed and the payload is silently filtered to `SELF_EDITABLE_FIELDS`: `fullName`, `phone`, `gender`, `address`, `bankName`, `bankAccount`. System fields (`email`, `dob`, `idCard`, `taxCode`, `bhxhCode`, `baseSalary`, `department`, `position`, `contractType`, `status`, `accountStatus`) remain admin-only. No new permission was added.
+- **Column picker (manager/admin view)**: 15 configurable columns (7 ON by default), persisted to `localStorage` under `nhansu.list-visible-cols`. "Họ tên" is required and cannot be toggled off.
+- **Field picker (employee self-profile)**: visible fields persisted to `localStorage` under `nhansu.self-visible-fields`. Both pickers hydrate from localStorage after mount (SSR-safe).
 
 ### FR-05: Attendance Tracking (Chấm công)
 
 - `WorkUnit` records (công số nhận) per employee per day — unique constraint on `(employeeId, date)`
 - `OvertimeEntry` records for overtime hours per employee per day
-- `KpiViolation` records for KPI deductions per day (multi-type `String[]`)
+- `KpiViolation` records for KPI deductions per day (multi-type `String[]` — one row can hold multiple violation codes for the same day)
 - `DeductionEvent` records for manual deductions (DI_MUON, VE_SOM, NGHI_NGAY, OVERTIME)
 - Month-based view with URL param `?month=YYYY-MM`
-- Mutations trigger `autoRecalcDraftPayroll()` — DRAFT payroll for the same employee+month is automatically recalculated
+- **All three WorkUnit mutation paths trigger payroll recalc** (fire-and-forget, `.catch(console.warn)`):
+  - POST (cell upsert): calls `autoRecalcDraftPayroll(companyId, employeeId, dateObj)`
+  - DELETE bulk wipe (`DELETE /api/work-units?employeeId=&month=`): calls `autoRecalcDraftPayroll(companyId, employeeId, monthStart)`
+  - Auto-fill createMany (`POST /api/work-units/auto-fill`): calls `recalculateMonth(companyId, monthStart)`
+- `chamcong-guard` blocks mutations on payrolls that are not DRAFT (PENDING/APPROVED/LOCKED/PAID); this closes the loop — any day that cannot be mutated is excluded from the manager action queue
+- Auto-fill accepts an optional `{ month: "YYYY-MM" }` body; defaults to current Vietnam-time month; rejects future months
 
 ### FR-06: Payroll (Lương & thưởng)
 
@@ -108,15 +118,22 @@ The payroll system has been through 13 upgrade phases. Current capabilities:
 - `congSoNhan` — sum of WorkUnit.units for the month
 - `congSoTru` — sum of APPROVED DeductionEvent.delta for the month
 - `netWorkUnits` = max(0, congSoNhan + congSoTru)
-- `workSalary` = `baseSalary * netWorkUnits / 26` (or formula override)
-- `overtimePay` = `baseSalary / 26 / 8 * overtimeHours * 1.5` (or formula override)
-- `mealPay` = `netWorkUnits * 35,000` (or formula override)
+- `workSalary` = `baseSalary * netWorkUnits / 26` (or formula override via `tong_luong_co_ban` column)
+- `overtimePay` = `baseSalary / 26 / 8 * overtimeHours * 1.5` (or formula override via `tien_tang_ca`)
+- `mealPay` = `netWorkUnits * 35,000` (or formula override via `tien_an`)
 - `responsibilitySalary` — from employee record
-- `tienPhuCap`, `thuong`, `tienPhat`, `kpiChuyenCan`, `kpiTrachNhiem` — from `SalaryValue` manual inputs
-- `grossSalary` = workSalary + overtimePay + responsibilitySalary + mealPay + tienPhuCap + thuong - tienPhat - kpiChuyenCan - kpiTrachNhiem
+- `tienPhuCap`, `thuong`, `tienPhat` (= `tienTruKhac`), `kpiChuyenCan` — from `SalaryValue` manual inputs (canonical `SalaryColumn` keys: `tien_phu_cap`, `thuong`, `tien_tru_khac`, `kpi_chuyen_can`)
+- `grossSalary` = workSalary + overtimePay + responsibilitySalary + mealPay + tienPhuCap + thuong + kpiChuyenCan - tienPhat
+  - `kpiChuyenCan` is a bonus (positive, adds to gross)
+  - `tienPhat` is a deduction (displayed as "Trừ khác" in payslip)
 - `bhxhEmployee`, `bhytEmployee`, `bhtnEmployee` — on `baseSalary`
 - `pitTax` — progressive brackets on (gross - insurance - personalDeduction)
-- `netSalary` = max(0, gross - insurance - pit)
+- `netSalary` — if any `SalaryColumn` has `calcMode` configured: sum of `add_to_net` columns minus `subtract_from_net` columns; otherwise `max(0, gross - insurance - pit)`
+
+**Payroll data model — 3 tiers:**
+1. `salary_columns` — per-company column template (key, name, formula, calcMode, order)
+2. `salary_values` — sparse per-employee × month manual inputs; `columnKey` FK references `salary_columns(companyId, key)` with `ON DELETE RESTRICT ON UPDATE CASCADE`
+3. `payrolls` — computed output per employee × month; contains only computed scalar fields (dropped: `kpiBonus`, `bonus`, `kpiTrachNhiem`, `otherDeductions`)
 
 **Workflow (PayrollStatus enum):**
 ```
@@ -277,6 +294,9 @@ DRAFT → PENDING → APPROVED → LOCKED → PAID
 | Excel export | `GET /api/export/payroll?month=YYYY-MM` returns `.xlsx` file with all payroll rows |
 | Formula versioning | Changing a column formula creates a `SalaryColumnVersion`; recalculating April uses April's formula |
 | Employee self-scoping | `employee` role Route Handler returns only own payroll; `employeeId` from JWT, not query param |
+| Employee self-edit | `PATCH /api/employees/[id]` by own employee strips non-whitelisted fields before validation; admin-only fields cannot be changed by self |
+| SalaryValue FK | Deleting a `SalaryColumn` that has `SalaryValue` rows returns a DB error; renaming the key cascades to all `salary_values` rows automatically |
+| Chamcong recalc | After bulk WorkUnit delete or auto-fill, DRAFT payrolls for that month reflect the new attendance totals |
 | Leave approval | N-day leave creates N DeductionEvents atomically in `db.$transaction()` |
 | Settings | PITBracket and InsuranceRate editable via Settings UI without redeploy |
 
@@ -298,10 +318,10 @@ DRAFT → PENDING → APPROVED → LOCKED → PAID
 | `KpiViolation` | `kpi_violations` | KPI deduction records |
 | `DeductionEvent` | `deduction_events` | Attendance deductions (manual + leave-driven) |
 | `LeaveRequest` | `leave_requests` | Leave requests with 1:N `DeductionEvent` |
-| `Payroll` | `payrolls` | Monthly payroll record with workflow status |
-| `SalaryColumn` | `salary_columns` | Dynamic formula column definitions |
+| `Payroll` | `payrolls` | Monthly computed payroll record with workflow status; scalar shadow fields removed (dropped: `kpiBonus`, `bonus`, `kpiTrachNhiem`, `otherDeductions`) |
+| `SalaryColumn` | `salary_columns` | Per-company dynamic formula column definitions (key, name, formula, calcMode) |
 | `SalaryColumnVersion` | `salary_column_versions` | Formula history with `effectiveFrom` date |
-| `SalaryValue` | `salary_values` | Manual input values per employee per month |
+| `SalaryValue` | `salary_values` | Sparse manual input values per employee × month; `columnKey` has FK to `salary_columns(companyId, key)` — `ON DELETE RESTRICT ON UPDATE CASCADE` |
 | `PITBracket` | `pit_brackets` | Progressive tax brackets with time-validity |
 | `InsuranceRate` | `insurance_rates` | BHXH/BHYT/BHTN rates with time-validity |
 | `PermissionGroup` | `permission_groups` | RBAC groups (system + custom) |

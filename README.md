@@ -65,6 +65,8 @@ npm run db:migrate   # apply schema migrations
 npm run db:seed      # seed initial data (development only)
 ```
 
+> **Prisma migration note:** `prisma/migrations/` does not represent the full current DB schema — several changes were applied directly via `prisma db execute`. Do NOT run `prisma migrate dev` against a database with live data; it will detect drift and offer to reset. Use `prisma db execute` for incremental changes and update `schema.prisma` manually. After any schema change, **fully restart the dev server** — hot-reload does not refresh the cached PrismaClient. Queries to changed columns will fail with `P2022 ColumnNotFound` if you only hot-reload.
+
 **4. Start development server**
 
 ```bash
@@ -163,7 +165,7 @@ The payroll module has been through 13 upgrade phases:
 - **Salary Config UI** (CRUD columns with formula preview and validation)
 - **Attendance sync** (auto-recalc on WorkUnit changes; `needsRecalc` flag)
 - **Full CRUD** (generate missing payrolls, add employee, delete DRAFT)
-- **Manual inputs** (`phuCap`, `thuong`, `phat` via `SalaryValue` model)
+- **Manual inputs** (`tienPhuCap`, `thuong`, `tienTruKhac` via `SalaryValue` model; keys normalized to match `SalaryColumn.key`; DB FK enforces referential integrity)
 - **Backend-authoritative calculation** (no client-side math)
 - **Workflow** (DRAFT→PENDING→APPROVED→LOCKED→PAID) + concurrency guard + `AuditLog` + immutable `snapshot`
 - **`SalaryColumnVersion`** (formula versioning with effective date) + 24 Vitest unit tests
@@ -198,6 +200,9 @@ Route RBAC is enforced in `middleware.ts` at Edge runtime via the `authorized` c
 - **Immutable payroll snapshot**: At LOCK time, full calc snapshot (vars, formula results, insurance rates, PIT brackets) is captured in `Payroll.snapshot` JSON.
 - **Anomaly detection**: Error-level anomalies (negative net, tax > gross) block PENDING transition; warnings are shown but do not block.
 - **Formula versioning**: `SalaryColumnVersion` records formula changes with `effectiveFrom` date — historical payroll recalculation uses the formula that was active at that month.
+- **3-tier payroll data model**: `salary_columns` (template) → `salary_values` (sparse manual inputs with DB FK) → `payrolls` (computed output). Dropping a column blocked at DB level; key rename cascades automatically.
+- **Chamcong ↔ Payroll sync closed**: All three WorkUnit mutation paths (POST upsert, DELETE bulk wipe, auto-fill createMany) trigger DRAFT payroll recalculation. `chamcong-guard` blocks mutations on non-DRAFT payrolls; missing attendance for locked employees is excluded from the manager action queue.
+- **Employee self-edit**: `PATCH /api/employees/[id]` allows employees to update their own personal/bank fields (`fullName`, `phone`, `gender`, `address`, `bankName`, `bankAccount`) without `nhanvien.edit`. System fields remain admin-only.
 
 ---
 

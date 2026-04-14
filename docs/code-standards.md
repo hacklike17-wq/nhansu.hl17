@@ -335,12 +335,15 @@ export async function POST(req: NextRequest) {
 
 ### Route Handler Rules
 
-1. Always call `auth()` as the first line
+1. Always call `auth()` as the first line (or `requirePermission()` / `requireSession()` from `@/lib/permission`)
 2. Check `companyId` from session — never trust request body for tenant scope
 3. Check required permission via `hasPermission()` before any mutation
 4. Validate input with Zod before touching the DB
 5. Call service functions (e.g., `payroll.service.ts`) rather than Prisma directly for complex operations
-6. After attendance mutations: call `autoRecalcDraftPayroll()` to keep DRAFT payrolls in sync
+6. After WorkUnit mutations, call the appropriate recalc hook (fire-and-forget with `.catch(console.warn)`):
+   - POST (cell upsert): `autoRecalcDraftPayroll(companyId, employeeId, dateObj)`
+   - DELETE (bulk wipe): `autoRecalcDraftPayroll(companyId, employeeId, monthStart)`
+   - Auto-fill `createMany`: `recalculateMonth(companyId, monthStart)`
 
 ### Response Shape Conventions
 
@@ -487,13 +490,14 @@ PENDING → APPROVED  (creates batch DeductionEvents in db.$transaction())
 | `cong_so_tru` | Total deduction units |
 | `cong_so` / `net_cong_so` | Net work units (= cong_so_nhan + cong_so_tru) |
 | `gio_tang_ca` | Total overtime hours |
-| `phu_cap` / `tien_phu_cap` | Allowance (manual input) |
+| `tien_phu_cap` | Allowance (manual input — canonical key; `phu_cap` is a legacy alias still injected for backward compat) |
 | `thuong` | Bonus (manual input) |
-| `phat` / `tien_phat` | Penalty (manual input) |
-| `kpi_chuyen_can` | KPI attendance deduction (manual input) |
-| `kpi_trach_nhiem` | KPI responsibility deduction (manual input) |
+| `tien_tru_khac` | Other deductions / fines (manual input — canonical key; `phat` and `tien_phat` are legacy aliases) |
+| `kpi_chuyen_can` | KPI attendance bonus (manual input — positive value, adds to gross) |
 
-Formula results from earlier columns feed later columns (topological sort). System-skipped key: `tong_thuc_nhan` (always computed explicitly, never via formula engine).
+Formula results from earlier columns feed later columns (topological sort). System-skipped key: `tong_thuc_nhan` (always computed explicitly from `calcMode` columns, never via formula engine).
+
+**SalaryValue key normalization:** `salary_values` rows must use canonical `SalaryColumn.key` values (`tien_phu_cap`, `tien_tru_khac`). The DB FK (`ON DELETE RESTRICT ON UPDATE CASCADE`) enforces referential integrity. Legacy short keys (`phu_cap`, `phat`) no longer exist in `salary_values` but are still injected as aliases in the `vars` map during calculation for formula backward compatibility.
 
 ### Validating a Formula Before Save
 
@@ -606,3 +610,41 @@ npm run lint
 ```
 
 The default Next.js lint rules apply. Both lint and TypeScript checking should pass before merge.
+
+---
+
+## 16. Prisma Client Cache — Dev Server Gotcha
+
+`src/lib/db.ts` caches the PrismaClient instance in `globalThis.prisma` to survive Next.js hot-reload:
+
+```typescript
+export const db = globalForPrisma.prisma ?? createPrismaClient()
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db
+```
+
+**Problem:** when you change `prisma/schema.prisma` and run `prisma generate` or apply a schema change, the cached client in the running dev server is **not** refreshed by hot-reload. The generated client in `src/generated/prisma` is updated on disk, but the in-memory instance was created from the old build.
+
+**Symptom:** Queries to newly-added or renamed columns fail with:
+```
+PrismaClientKnownRequestError: P2022 — Column 'tableName'.'columnName' does not exist in the current database.
+```
+or the reverse — reading a dropped column returns an unexpected field.
+
+**Fix:** After any Prisma schema change (migrate, `prisma db execute`, `prisma generate`), **fully restart the dev server** (`Ctrl+C` + `npm run dev`). Hot-reload is not sufficient.
+
+---
+
+## 17. Prisma Migration History Drift
+
+The `prisma/migrations/` directory contains 3 migration files that do not represent the full current DB schema. Several schema changes were applied directly via `prisma db execute` (ALTER TABLE, UPDATE, DELETE) to avoid a destructive reset that `prisma migrate dev` would trigger when it detects drift.
+
+**Consequence:** `npm run db:migrate` (`prisma migrate dev`) will detect schema drift and may prompt to reset the database, which would destroy all data. Do NOT run `prisma migrate dev` against a database that has live data.
+
+**Safe workflow for incremental schema changes:**
+1. Apply the change directly: `npx prisma db execute --stdin <<< "ALTER TABLE ..."`
+2. Update `schema.prisma` to match the new DB state
+3. Run `npx prisma generate` to regenerate the client
+4. Restart the dev server (see Section 16)
+5. Document the raw SQL applied in a comment in `schema.prisma` or a `plans/` note
+
+**`npm run db:reset`** (`prisma migrate reset --force`) is safe only for local development with seed data — it wipes and rebuilds from scratch.

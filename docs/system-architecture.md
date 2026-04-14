@@ -84,19 +84,22 @@ All routes are file-system based under `src/app/`. Vietnamese route paths reflec
 /caidat              → app/caidat/page.tsx        (Settings — PIT, insurance, salary config)
 /doi-mat-khau        → app/doi-mat-khau/page.tsx  (Password change)
 
-/api/auth/[...nextauth]         → Auth.js handler
-/api/employees/[id]?            → Employee CRUD
-/api/work-units/[id]?           → WorkUnit CRUD + autoRecalc trigger
-/api/overtime/[id]?             → OvertimeEntry CRUD
-/api/kpi-violations/[id]?       → KpiViolation CRUD
-/api/deductions/[id]?           → DeductionEvent CRUD
-/api/leave-requests/[id]?       → Leave request CRUD + approve/reject
-/api/payroll/[id]?              → Payroll generate + status transitions + delete
-/api/payroll/recalculate        → Bulk recalculate DRAFT for month
-/api/payroll/salary-values      → Manual input values (phuCap, thuong, phat)
-/api/salary-columns/[id]?       → SalaryColumn CRUD (config)
-/api/permission-groups/[id]?    → PermissionGroup CRUD
-/api/export/payroll             → Excel export (GET, file response)
+/api/auth/[...nextauth]              → Auth.js handler
+/api/employees/[id]?                 → Employee CRUD; PATCH has implicit self-edit branch for employees
+/api/work-units/[id]?                → WorkUnit CRUD + autoRecalc trigger
+/api/work-units/auto-fill            → POST — bulk attendance auto-fill + recalculateMonth
+/api/overtime/[id]?                  → OvertimeEntry CRUD
+/api/kpi-violations/[id]?            → KpiViolation CRUD
+/api/deductions/[id]?                → DeductionEvent CRUD
+/api/leave-requests/[id]?            → Leave request CRUD + approve/reject
+/api/payroll/[id]?                   → Payroll generate + status transitions + delete
+/api/payroll/recalculate             → Bulk recalculate DRAFT for month
+/api/payroll/salary-values           → Manual input values (tienPhuCap, thuong, tienTruKhac)
+/api/salary-columns/[id]?            → SalaryColumn CRUD (config)
+/api/permission-groups/[id]?         → PermissionGroup CRUD
+/api/export/payroll                  → Excel export (GET, file response)
+/api/dashboard/manager-overview      → GET — today's pulse + action queue + month progress
+/api/dashboard/manager-team          → GET — per-employee row: status, công, KPI count, payroll status
 ```
 
 ### 3.2 Layout and Shell Layer
@@ -212,8 +215,8 @@ SWR caches responses in memory. After mutations, call `mutate()` from the SWR ho
 The `payroll.service.ts` is the only service file. It contains:
 - `calculatePayroll()` — 8 parallel DB queries, topological formula evaluation, PIT + insurance calculation, anomaly detection
 - `upsertPayroll()` — create or update DRAFT row with guard against non-DRAFT rows
-- `autoRecalcDraftPayroll()` — triggered by attendance mutation Route Handlers
-- `recalculateMonth()` — bulk recalculate all DRAFT payrolls for a month
+- `autoRecalcDraftPayroll()` — triggered by WorkUnit POST (cell upsert) and WorkUnit DELETE (bulk wipe) Route Handlers; fire-and-forget with `.catch(console.warn)`
+- `recalculateMonth()` — bulk recalculate all DRAFT payrolls for a month; triggered by auto-fill `createMany`; fire-and-forget with `.catch(console.warn)`
 - `buildPayrollSnapshot()` — immutable snapshot for LOCK transition
 - `markDraftPayrollsStale()` — sets `needsRecalc=true` without recalculating
 
@@ -223,6 +226,11 @@ The `payroll.service.ts` is the only service file. It contains:
 - `PITBracket` + `InsuranceRate`: stored in DB with time-validity — editable via Settings UI
 - `SalaryColumnVersion`: formula history — recalculating a past month uses the formula that was active then
 - All VND amounts: `Decimal @db.Decimal(15,0)` — converted to `Number` for JSON serialization
+- **Payroll 3-tier data model** (normalized, enforced by DB FK):
+  1. `salary_columns` — per-company column template: key, name, formula, calcMode, order
+  2. `salary_values` — sparse per-employee × month manual inputs, keyed by `columnKey`; `SalaryValue.columnKey` references `SalaryColumn(companyId, key)` via FK (`ON DELETE RESTRICT ON UPDATE CASCADE`)
+  3. `payrolls` — per-employee × month computed output + workflow status + snapshot
+  Scalar shadow fields (`kpiBonus`, `bonus`, `kpiTrachNhiem`, `otherDeductions`) have been removed from the `payrolls` table. Dropping a `SalaryColumn` that has live `SalaryValue` rows is now blocked at the DB level; renaming a `SalaryColumn.key` cascades automatically to `SalaryValue`.
 
 ---
 
@@ -291,13 +299,16 @@ payroll.service.ts
 | User permissions | JWT token | HttpOnly cookie |
 | Module data (payroll, employees, etc.) | SWR cache | Memory (cleared on refresh) |
 | UI state (search, filters, modal open) | `useState` | None — reset on navigation |
+| Employee list column visibility | `localStorage` key `nhansu.list-visible-cols` | localStorage (hydrated after mount) |
+| Employee self-profile field visibility | `localStorage` key `nhansu.self-visible-fields` | localStorage (hydrated after mount) |
 | Payroll row state | PostgreSQL `payrolls` table | Database |
 | Formula column config | PostgreSQL `salary_columns` | Database |
+| Manual salary inputs | PostgreSQL `salary_values` table | Database |
 | PITBracket, InsuranceRate | PostgreSQL config tables | Database |
 | Audit trail | PostgreSQL `audit_logs` table | Database (immutable) |
 | Payroll calc snapshot | `payrolls.snapshot` JSON | Database (immutable after LOCKED) |
 
-No Redux, Zustand, or other global state libraries. No localStorage.
+No Redux, Zustand, or other global state libraries. localStorage is used only for UI column/field visibility preferences (non-sensitive; hydrated client-side after mount to avoid SSR mismatch).
 
 ---
 
@@ -335,7 +346,7 @@ calculatePayroll(companyId, employeeId, monthDate)
 │   ├── workUnits (công số nhận for month)
 │   ├── deductionEvents (APPROVED, delta values)
 │   ├── overtimeEntries (hours for month)
-│   ├── salaryValues (manual inputs: phuCap, thuong, phat, kpiChuyenCan, kpiTrachNhiem)
+│   ├── salaryValues (manual inputs: tienPhuCap, thuong, tienTruKhac, kpiChuyenCan)
 │   ├── insuranceRates (BHXH, BHYT, BHTN — time-valid)
 │   └── pitBrackets (progressive brackets — time-valid)
 │
@@ -355,7 +366,8 @@ calculatePayroll(companyId, employeeId, monthDate)
 │   └── mealPay = vars["tien_an"] ?? netWorkUnits * 35_000
 │
 ├── grossSalary = workSalary + overtimePay + responsibilitySalary + mealPay
-│               + tienPhuCap + thuong - tienPhat - kpiChuyenCan - kpiTrachNhiem
+│               + tienPhuCap + thuong + kpiChuyenCan - tienPhat
+│   (kpiChuyenCan is a bonus/positive; tienPhat = tienTruKhac deduction)
 │
 ├── Insurance (on baseSalary):
 │   ├── bhxhEmployee = round(baseSalary * bhxhRate)  // default 8%
@@ -474,3 +486,11 @@ Vercel deployment: `prisma migrate deploy && next build` as build command.
 | Personal deduction | Hardcoded 11,000,000 VND | Simple; update in service when reform takes effect |
 | Budget actual | Computed on read | No sync bugs at current scale |
 | Cashflow | Derived view (no table) | Avoids synchronization issues |
+| SalaryValue FK | `ON DELETE RESTRICT ON UPDATE CASCADE` to SalaryColumn | Prevents orphan values; renames cascade; applied via `prisma db execute` |
+| Payroll scalar fields | Removed `kpiBonus`, `bonus`, `kpiTrachNhiem`, `otherDeductions` | Were dead or double-writes; dynamic SalaryColumn/SalaryValue system is the source of truth |
+| Employee self-edit | Implicit from ownership (no new permission) | `SELF_EDITABLE_FIELDS` whitelist in `[id]/route.ts` strips system fields before validation |
+| Dashboard row order | Both manager-team and payroll ordered by `Employee.createdAt asc` | Ensures rows line up between dashboard table and payroll table |
+| KPI violation count | Sum `types[].length` across rows, not count of rows | One KpiViolation row holds multiple codes in `types: String[]` |
+| Missing attendance filter | Exclude employees with non-DRAFT payroll | chamcong-guard blocks mutations; missing attendance is not actionable for locked employees |
+| Column visibility persistence | `localStorage` keys `nhansu.list-visible-cols`, `nhansu.self-visible-fields` | Hydrated after mount to avoid SSR mismatch; non-sensitive preference data |
+| Prisma schema migration | `prisma db execute` for post-drift changes | `migrations/` directory has 3 files but DB has drifted; `migrate dev` would require destructive reset |

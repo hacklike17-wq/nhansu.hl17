@@ -57,8 +57,9 @@ nhansu.hl17/
 │   │       │   ├── route.ts        # GET (list), POST (create)
 │   │       │   └── [id]/route.ts   # GET, PATCH, DELETE (soft)
 │   │       ├── work-units/
-│   │       │   ├── route.ts        # GET (list by month), POST (create)
-│   │       │   └── [id]/route.ts   # PATCH, DELETE
+│   │       │   ├── route.ts        # GET (list by month), POST (cell upsert + autoRecalc), DELETE (bulk wipe + autoRecalc)
+│   │       │   ├── [id]/route.ts   # PATCH, DELETE
+│   │       │   └── auto-fill/route.ts  # POST — bulk auto-fill + recalculateMonth
 │   │       ├── overtime/
 │   │       │   ├── route.ts        # GET, POST
 │   │       │   └── [id]/route.ts   # PATCH, DELETE
@@ -82,6 +83,9 @@ nhansu.hl17/
 │   │       ├── permission-groups/
 │   │       │   ├── route.ts        # GET, POST
 │   │       │   └── [id]/route.ts   # PATCH, DELETE
+│   │       ├── dashboard/
+│   │       │   ├── manager-overview/route.ts  # GET — today's pulse + action queue + month progress
+│   │       │   └── manager-team/route.ts      # GET — per-employee status, công, KPI, payroll status
 │   │       └── export/
 │   │           └── payroll/route.ts # GET — Excel export (ExcelJS)
 │   ├── components/
@@ -233,15 +237,15 @@ Core business logic. All payroll Route Handlers call these functions:
 |--------|---------|
 | `calculatePayroll(companyId, employeeId, monthDate)` | Full payroll calculation — returns `PayrollCalcResult` |
 | `upsertPayroll(companyId, employeeId, monthStr)` | Create or update DRAFT payroll row |
-| `autoRecalcDraftPayroll(companyId, employeeId, dateInMonth)` | Triggered by attendance mutations |
-| `recalculateMonth(companyId, month)` | Recalculate all DRAFT payrolls for a month |
+| `autoRecalcDraftPayroll(companyId, employeeId, dateInMonth)` | Triggered by WorkUnit POST and DELETE; fire-and-forget |
+| `recalculateMonth(companyId, month)` | Recalculate all DRAFT payrolls for a month; triggered by auto-fill; fire-and-forget |
 | `markDraftPayrollsStale(companyId, month?)` | Set `needsRecalc=true` on DRAFT payrolls |
 | `buildPayrollSnapshot(companyId, employeeId, monthDate, lockedBy, payrollRow)` | Build immutable JSON snapshot at LOCK time |
 | `checkPayrollAnomalies(payroll, prev?)` | Detect anomalies, compare to previous month |
 | `listForEmployee(companyId, employeeId, month)` | Employee self-service payroll query |
 | `FormulaError` | Interface for formula evaluation error contract |
 | `Anomaly` | Interface for anomaly detection result |
-| `PayrollCalcResult` | Full calculation result type |
+| `PayrollCalcResult` | Full calculation result type (fields: `tienPhat` replaces legacy `kpiTrachNhiem`/`otherDeductions`) |
 | `PayrollSnapshot` | Immutable lock-time snapshot type |
 
 ### `src/hooks/usePayroll.ts`
@@ -348,10 +352,10 @@ SWR-based client hook for payroll data:
 
 | Table | Key Columns |
 |-------|------------|
-| `payrolls` | `id`, `companyId`, `employeeId`, `month @db.Date`, all salary fields as `Decimal(15,0)`, `status PayrollStatus`, `needsRecalc Boolean`, `snapshot Json?`, `anomalies Json?` — unique `(employeeId, month)` |
-| `salary_columns` | `id`, `companyId`, `key` (unique per company), `name`, `type`, `formula?`, `isEditable`, `isSystem`, `order` |
+| `payrolls` | `id`, `companyId`, `employeeId`, `month @db.Date`, computed salary fields as `Decimal(15,0)` (`workSalary`, `overtimePay`, `mealPay`, `tienPhuCap`, `kpiChuyenCan`, `tienPhat`, `grossSalary`, insurance, `pitTax`, `netSalary`), `status PayrollStatus`, `needsRecalc Boolean`, `snapshot Json?`, `anomalies Json?` — unique `(employeeId, month)`. Note: `kpiBonus`, `bonus`, `kpiTrachNhiem`, `otherDeductions` columns were removed. |
+| `salary_columns` | `id`, `companyId`, `key` (unique per company), `name`, `type`, `formula?`, `isEditable`, `isSystem`, `calcMode CalcMode`, `order` |
 | `salary_column_versions` | `id`, `companyId`, `columnKey`, `formula?`, `effectiveFrom @db.Date` — unique `(companyId, columnKey, effectiveFrom)` |
-| `salary_values` | `id`, `companyId`, `employeeId`, `month @db.Date`, `columnKey`, `value Decimal(15,2)` — unique `(employeeId, month, columnKey)` |
+| `salary_values` | `id`, `companyId`, `employeeId`, `month @db.Date`, `columnKey`, `value Decimal(15,2)` — unique `(employeeId, month, columnKey)`; FK on `(companyId, columnKey)` → `salary_columns(companyId, key)` with `ON DELETE RESTRICT ON UPDATE CASCADE` |
 
 ### Finance Tables
 
@@ -408,14 +412,25 @@ Client (luong/page.tsx)
 
 ### Attendance → Auto-Recalc Flow
 
+All three WorkUnit mutation paths now trigger payroll recalc (fire-and-forget, `.catch(console.warn)`):
+
 ```
-Client → POST /api/work-units (or /api/overtime, /api/kpi-violations, /api/deductions)
-  └── Route Handler
-        └── db.workUnit.create/update/delete
-              └── autoRecalcDraftPayroll(companyId, employeeId, date)
-                    └── db.payroll.findUnique → check status === "DRAFT"
-                          └── upsertPayroll() → recalculate
+POST /api/work-units (cell upsert)
+  └── db.workUnit.upsert
+        └── autoRecalcDraftPayroll(companyId, employeeId, dateObj) [fire-and-forget]
+              └── db.payroll.findUnique → check status === "DRAFT" → upsertPayroll()
+
+DELETE /api/work-units?employeeId=&month= (bulk wipe)
+  └── db.workUnit.deleteMany
+        └── autoRecalcDraftPayroll(companyId, employeeId, monthStart) [fire-and-forget]
+
+POST /api/work-units/auto-fill (createMany)
+  └── db.workUnit.createMany
+        └── recalculateMonth(companyId, monthStart) [fire-and-forget]
+              └── recalculate ALL DRAFT payrolls for that month
 ```
+
+`chamcong-guard` (`src/lib/chamcong-guard.ts`) blocks mutations when the employee's payroll for that month is not DRAFT. Helper `lockedEmployeeIdsForMonth(companyId, monthStart, employeeIds)` returns a Set of employee IDs with non-DRAFT payrolls, used by both the auto-fill route and the dashboard manager-overview endpoint.
 
 ### Payroll Lock Flow
 
