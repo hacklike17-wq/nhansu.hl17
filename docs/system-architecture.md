@@ -100,6 +100,12 @@ All routes are file-system based under `src/app/`. Vietnamese route paths reflec
 /api/export/payroll                  → Excel export (GET, file response)
 /api/dashboard/manager-overview      → GET — today's pulse + action queue + month progress
 /api/dashboard/manager-team          → GET — per-employee row: status, công, KPI count, payroll status
+/api/ai/config                       → GET (strips key), PATCH — AiConfig upsert (admin only)
+/api/ai/test                         → POST — validate stored config in one click (admin only)
+/api/ai/chat                         → POST — chat with tool-calling loop; enforces token cap; logs usage
+/api/ai/chat/conversations           → GET — user's 50 most recent conversations
+/api/ai/chat/conversations/[id]      → GET full messages, DELETE (cascade); 404 on ownership mismatch
+/api/ai/usage                        → GET — monthly token/cost summary with byUser breakdown (admin only)
 ```
 
 ### 3.2 Layout and Shell Layer
@@ -291,6 +297,76 @@ payroll.service.ts
 
 ---
 
+## 11. AI Assistant Architecture
+
+### Data Flow
+
+```
+Browser (ChatWidget — 'use client')
+  ├── on mount: reads localStorage("nhansu.ai.currentConversationId")
+  │     └── GET /api/ai/chat/conversations/[id]
+  │           ├── 404 → clear localStorage key, start fresh
+  │           └── 200 → hydrate message history
+  │
+  └── user sends message → POST /api/ai/chat
+        ├── auth() → JWT session → { companyId, userId, role, employeeId }
+        ├── db.aiConfig.findUnique({ where: { companyId } })
+        │     ├── !config.enabled → 403
+        │     └── monthlyTokenLimit check: aggregate ai_usage_logs for VN month
+        │           └── total >= limit → 429 (if limit > 0)
+        ├── decryptApiKey(config.apiKeyEncrypted, config.apiKeyIv)  ← AI_ENCRYPTION_KEY
+        ├── assemble system prompt:
+        │     role === "admin" → systemPromptAdmin + role catalog + tool list
+        │     role === "manager" → systemPromptManager + self-tool list + rule #3 (refuse cross-employee queries)
+        │     role === "employee" → systemPromptEmployee + self-tool list + rule #3
+        │     + companyRules appended to all
+        ├── openaiChatWithTools(messages, tools, apiKey, model)
+        │     ├── POST openai /v1/chat/completions (with tools)
+        │     ├── if model returns tool_calls:
+        │     │     for each call → tool.execute(args, ctx)  ← ctx from session, not LLM
+        │     │     append role:"tool" messages → repeat (max 5 iterations)
+        │     └── returns { content, usage, toolCalls[] }
+        ├── db.aiMessage.create × 2 (user + assistant)
+        └── db.aiUsageLog.upsert (companyId, userId, month) — atomic increment
+              └── 200 { content, conversationId, toolCalls }
+```
+
+### Security Invariants
+
+1. **API key never leaves the PATCH handler** — `GET /api/ai/config` strips `apiKeyEncrypted`/`apiKeyIv` and returns only `apiKeyLast4` + `hasApiKey`. The key is decrypted server-side at call time, never sent to the client.
+
+2. **`AI_ENCRYPTION_KEY` is irreplaceable at rest** — losing or rotating the env var invalidates every stored ciphertext; admin must re-enter the OpenAI API key. Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` (64 hex chars = 32 bytes). Store alongside `NEXTAUTH_SECRET`; never commit.
+
+3. **Tool context is session-injected** — `ToolContext` (`companyId`, `userId`, `role`, `employeeId`) is built from the server JWT session and passed into every tool `execute()` call. The LLM's tool arguments are parsed and validated but can never override scoping fields.
+
+4. **Self-scope tools ignore LLM-supplied IDs** — `ensureEmployeeId(ctx)` returns `{ ok: false }` if the session has no `employeeId`. The five SELF_TOOLS always use `ctx.employeeId` for DB queries; any `employeeId` the LLM might hallucinate in args is silently discarded.
+
+5. **Admin tools use server-side code lookup** — `get_employee_payroll` accepts either a cuid or a human code like `NV011`; it resolves to the DB record via `db.employee.findFirst({ where: { companyId, OR: [{ id }, { code }] } })`. The LLM cannot bypass `companyId` isolation by guessing an ID.
+
+### Database Tables
+
+| Table | Key Columns |
+|-------|------------|
+| `ai_config` | `companyId` (unique), `apiKeyEncrypted`, `apiKeyIv`, `apiKeyLast4`, `model`, `systemPromptAdmin`, `systemPromptManager`, `systemPromptEmployee`, `companyRules`, `enabled`, `monthlyTokenLimit` |
+| `ai_conversations` | `companyId`, `userId`, `title?` — cascades to `ai_messages` on delete |
+| `ai_messages` | `conversationId`, `role`, `content`, `toolCalls Json?` |
+| `ai_usage_logs` | unique `(companyId, userId, month)` — `inputTokens`, `outputTokens`, `requestCount`; upserted atomically after each reply |
+
+All AI tables were applied via `prisma db execute` (not via the migrations directory — see §17 of code-standards.md for the migration drift rule).
+
+### Widget localStorage
+
+The widget uses exactly one `localStorage` key: `nhansu.ai.currentConversationId`. It is not scoped by user ID because the server returns 404 for any conversation that does not belong to the caller's `userId`, and the widget clears the key on 404. This matches the non-sensitive preference pattern used by column/field visibility keys (`nhansu.list-visible-cols`, `nhansu.self-visible-fields`) — all hydrated after mount to avoid SSR mismatch.
+
+### Tech Stack Additions (AI)
+
+| Package | Purpose |
+|---------|---------|
+| `openai` | OpenAI SDK — server-only; imported only in `src/lib/ai/providers/openai.ts` |
+| `react-markdown@^10` + `remark-gfm@^4` | GFM markdown rendering in assistant bubbles |
+
+---
+
 ## 5. State Management
 
 | State | Owner | Persistence |
@@ -301,6 +377,9 @@ payroll.service.ts
 | UI state (search, filters, modal open) | `useState` | None — reset on navigation |
 | Employee list column visibility | `localStorage` key `nhansu.list-visible-cols` | localStorage (hydrated after mount) |
 | Employee self-profile field visibility | `localStorage` key `nhansu.self-visible-fields` | localStorage (hydrated after mount) |
+| AI current conversation ID | `localStorage` key `nhansu.ai.currentConversationId` | localStorage; cleared on server 404 |
+| AI conversation history | PostgreSQL `ai_conversations` + `ai_messages` | Database |
+| AI monthly token usage | PostgreSQL `ai_usage_logs` | Database (atomic upsert) |
 | Payroll row state | PostgreSQL `payrolls` table | Database |
 | Formula column config | PostgreSQL `salary_columns` | Database |
 | Manual salary inputs | PostgreSQL `salary_values` table | Database |
@@ -326,6 +405,12 @@ No Redux, Zustand, or other global state libraries. localStorage is used only fo
 | `src/auth.config.ts` | Edge-safe module | No DB import |
 | `src/auth.ts` | Node.js only | PrismaAdapter + Credentials |
 | `src/lib/services/payroll.service.ts` | Node.js only | Server-side calculation |
+| `src/lib/ai/providers/openai.ts` | Node.js only | OpenAI SDK — never imported by client |
+| `src/lib/ai/tools/*.ts` | Node.js only | DB queries — never imported by client |
+| `src/lib/ai/providers/models.ts` | Client-safe | Static constant only — no server imports |
+| `src/lib/ai/providers/pricing.ts` | Client-safe | Pure functions — no server imports |
+| `src/components/ai/ChatWidget.tsx` | Client Component | `'use client'` — floating chat widget |
+| `src/app/caidat/_components/AiConfigTab.tsx` | Client Component | `'use client'` — admin AI config tab |
 
 ---
 
@@ -417,9 +502,12 @@ Dark mode is declared as a custom variant but `ThemeProvider` is configured with
 # .env.local (never commit)
 DATABASE_URL="postgresql://user:pass@localhost:5432/nhansu_hl17"
 NEXTAUTH_SECRET="<minimum 32 bytes — generate: openssl rand -base64 32>"
+AI_ENCRYPTION_KEY="<64 hex chars — generate: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\">"
 ```
 
 `NEXTAUTH_URL` is optional in development (Next.js 16 infers it). Required in production deployment.
+
+`AI_ENCRYPTION_KEY` is required for the AI assistant feature. Its absence will cause the config tab to error on key save. Rotating this value invalidates all stored OpenAI API keys — admin must re-enter after rotation. See `docs/deployment-guide.md` for details.
 
 ### Development Setup
 
@@ -455,6 +543,11 @@ Vercel deployment: `prisma migrate deploy && next build` as build command.
 | Payroll immutability | LOCKED payrolls cannot be recalculated; `snapshot` JSON is write-once |
 | Concurrency guard | `updateMany` + `count === 0` prevents double-approval race |
 | Seed protection | `npm run db:seed` — production guard should be added to `seed.ts` |
+| AI API key storage | AES-256-GCM encryption in `ai_config.apiKeyEncrypted`; key material is `AI_ENCRYPTION_KEY` env var |
+| AI key exposure prevention | GET `/api/ai/config` returns `apiKeyLast4` + `hasApiKey` only; ciphertext never sent to client |
+| AI tool isolation | `ToolContext` built from server JWT session; LLM arguments cannot override `companyId` or `userId` |
+| AI self-scope defense | SELF_TOOLS call `ensureEmployeeId(ctx)` and query by `ctx.employeeId` — LLM-supplied IDs are ignored |
+| AI token budget | Monthly cap enforced server-side before each OpenAI call; 429 returned when limit is met |
 
 ### Remaining Considerations
 

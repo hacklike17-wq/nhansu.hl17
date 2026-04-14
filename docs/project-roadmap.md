@@ -53,9 +53,30 @@ The system migrated from a localStorage-based prototype to a full-stack PostgreS
 | `e914a3b` | Payroll refactor: dropped 4 legacy scalar fields from `payrolls` table (`kpiBonus`, `bonus`, `kpiTrachNhiem`, `otherDeductions`); `PersonalSalaryView` updated; "Phạt" label renamed to "Trừ khác" |
 | `59979d3` | Employee: self-edit branch in `PATCH /api/employees/[id]` with `SELF_EDITABLE_FIELDS` whitelist; manager column picker with localStorage persistence; employee self-profile field picker |
 
+### AI Assistant — Phase 1 + 2.1–2.6 (2026-04-14, all shipped)
+
+| Commit | Phase | Description |
+|--------|-------|-------------|
+| `68d5248` | Phase 1 | AI config foundation — `AiConfig` table, AES-256-GCM key encryption (`crypto.ts`), admin config tab in `/caidat`, OpenAI provider + model selector, test endpoint `POST /api/ai/test` |
+| `bb32c62` | Phase 2.1 | Floating `ChatWidget` (bottom-right) + conversation-aware `POST /api/ai/chat`; `ai_conversations` + `ai_messages` tables; optimistic user message; widget admin-only in this phase |
+| `33c8eb0` | Phase 2.2 | Tool calling + 5 admin tools (`get_company_overview`, `list_employees`, `get_employee_payroll`, `get_attendance_summary`, `get_kpi_violations`); `openaiChatWithTools()` max-5-iteration loop; `models.ts` client-safe split; violet tool badge in widget |
+| `4baafdf` | Phase 2.3 | Self-scope tools (`get_my_info`, `get_my_payroll`, `get_my_attendance`, `get_my_kpi_violations`, `get_my_leave_history`) for manager/employee; widget open to all roles; `ensureEmployeeId()` defense; social-engineering guard in system prompt |
+| `401c3ef` | Phase 2.4 | Conversation history — `GET/DELETE /api/ai/chat/conversations/[id]`; history overlay in widget; `nhansu.ai.currentConversationId` localStorage key; 404 silently clears key |
+| `dbb9fea` | Phase 2.5 | Cost tracking — `ai_usage_logs` table; `pricing.ts` (client-safe); monthly token cap enforced before OpenAI call (429 on exceed); `GET /api/ai/usage`; cost progress bar in `AiConfigTab` |
+| `09a22b4` | Phase 2.6 | UI polish — `react-markdown` + `remark-gfm` for GFM bubble rendering; `CopyButton` (hover-reveal, 1.5s green flash); auto-resize textarea; widget resized to 460×600 |
+
+**AI Backlog (not yet scheduled):**
+- Streaming responses (OpenAI streaming API + SSE to client)
+- Multi-provider support: Anthropic (Claude) and Google (Gemini) — placeholders already in UI
+- Usage alerts: email/in-app notification when a company reaches 80 % of token limit
+- Tool audit log: record which tools were called per message for admin review
+- Mobile-responsive widget (currently fixed 460px width)
+- Export / search conversations (date range filter, keyword search)
+- Finance AI tools — **deferred; waiting on real finance backend data** (finance modules still use static data)
+
 ---
 
-## Current State (2026-04-13)
+## Current State (2026-04-14)
 
 **What is fully working:**
 - Authentication (login, JWT sessions, RBAC middleware)
@@ -63,10 +84,11 @@ The system migrated from a localStorage-based prototype to a full-stack PostgreS
 - Attendance: WorkUnit, OvertimeEntry, KpiViolation, DeductionEvent; all three WorkUnit mutation paths trigger DRAFT payroll recalc
 - Payroll: full calculation engine + workflow + anomaly detection + Excel export; 3-tier normalized data model (salary_columns → salary_values → payrolls) with DB FK enforcement
 - Leave requests: approval with batch DeductionEvent creation
-- Settings: PITBracket, InsuranceRate, SalaryColumn CRUD
+- Settings: PITBracket, InsuranceRate, SalaryColumn CRUD, AI config (admin)
 - Permission groups: CRUD + system group protection
 - Formula versioning with historical recalculation
 - Manager dashboard: live team status table + action queue from DB (no static data)
+- AI assistant: floating chat widget for all roles; role-based tool calling; conversation history; monthly token cap; GFM markdown rendering
 
 **What is using static data (not yet backend-connected):**
 - Dashboard KPI cards and charts (static from `constants/data.ts`)

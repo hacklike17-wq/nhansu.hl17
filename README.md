@@ -152,8 +152,37 @@ prisma/
 | `/nghiphep` | Nghỉ phép | Leave requests and deduction events |
 | `/tuyendung` | Tuyển dụng | Recruitment pipeline |
 | `/phanquyen` | Phân quyền | Role and permission group management |
-| `/caidat` | Cài đặt | Company profile, PITBracket, InsuranceRate, salary columns |
+| `/caidat` | Cài đặt | Company profile, PITBracket, InsuranceRate, salary columns, AI config |
 | `/doi-mat-khau` | Đổi mật khẩu | Password change |
+
+---
+
+## AI Assistant
+
+A floating chat widget (bottom-right, `460×600`) is mounted in `ProtectedLayout` and available to all authenticated users. The assistant uses role-specific system prompts and can call server-side tools to answer HR questions.
+
+**What it does:**
+- Admin: query company-wide employee list, payroll summaries, attendance aggregates, and KPI violations via 5 tool calls
+- Manager/Employee: query own info, payslip, attendance, KPI violations, and leave history via 5 self-scope tools — cannot access other employees' data
+- All roles: maintains per-conversation history (cap 20 messages) and renders responses as GFM markdown
+
+**How to enable:**
+
+1. Generate an encryption key and add it to `.env.local`:
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   # → AI_ENCRYPTION_KEY="<64 hex chars>"
+   ```
+2. Navigate to `/caidat` → "Trợ lý AI" tab (admin only)
+3. Enter your OpenAI API key, choose a model, configure role-specific system prompts and company rules, set a monthly token limit, and click "Kiểm tra kết nối"
+
+**Security notes:**
+- The API key is encrypted at rest with AES-256-GCM using `AI_ENCRYPTION_KEY`; the plaintext key never leaves the PATCH handler (GET returns only `apiKeyLast4`)
+- Losing or rotating `AI_ENCRYPTION_KEY` invalidates every stored API key — admin must re-enter
+- Tool context (`companyId`, `userId`, `role`, `employeeId`) is injected server-side from the JWT session; the LLM cannot influence scoping fields
+- Self-scope tools ignore any employee ID the LLM might hallucinate and use `ctx.employeeId` exclusively
+
+See `docs/system-architecture.md §11` for the full data-flow diagram and security invariants.
 
 ---
 
@@ -214,4 +243,5 @@ Full documentation in `docs/`:
 - `docs/codebase-summary.md` — File structure, modules, DB schema, dependencies
 - `docs/code-standards.md` — Patterns, conventions, service layer, approval pattern, auth patterns
 - `docs/system-architecture.md` — Tech stack, component relationships, data flow, security
-- `docs/project-roadmap.md` — Phase history (all 13 payroll phases complete) and future roadmap
+- `docs/project-roadmap.md` — Phase history (all 13 payroll phases + AI phases complete) and future roadmap
+- `docs/deployment-guide.md` — Environment variables, Vercel + Neon setup, database commands

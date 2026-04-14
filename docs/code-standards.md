@@ -634,6 +634,52 @@ or the reverse — reading a dropped column returns an unexpected field.
 
 ---
 
+## 18. AI Tool Authoring Rules
+
+All AI tools live in `src/lib/ai/tools/`. Each tool must follow these rules:
+
+**Tool context is always server-injected:**
+```typescript
+// tools receive ToolContext from the server session — never from tool args
+type ToolContext = {
+  companyId: string
+  userId: string
+  role: string
+  employeeId: string | null
+}
+
+// every tool execute signature:
+execute: async (args: unknown, ctx: ToolContext): Promise<ToolResult>
+```
+
+1. **Hard-pin `ctx.companyId`** in every DB query — never use a company identifier from `args`
+2. **No write tools** — all tools are read-only; mutations go through their existing Route Handlers
+3. **Return `ToolResult` shape** — `{ ok: true, data: ... }` or `{ ok: false, error: string }`; never throw
+4. **Self-scope tools use `ctx.employeeId` exclusively** — call `ensureEmployeeId(ctx)` at the top; ignore any `employeeId` in `args`
+5. **Admin tools may accept a human-readable code** (e.g., `NV011`) — resolve to a DB `id` server-side; never trust a raw `id` from the LLM without a `companyId`-scoped lookup
+6. **Register in `index.ts`** — add to `ADMIN_TOOLS` or `SELF_TOOLS` array; `getToolsForRole(role)` returns the correct set
+
+The tool schema passed to OpenAI is built by `toolToOpenAISchema()` — do not hand-craft the OpenAI function schema.
+
+---
+
+## 19. Client-Safe Module Boundary Rule
+
+Any file imported by a `'use client'` component (including the admin config tab at `src/app/caidat/_components/AiConfigTab.tsx`) **must not** transitively import:
+- `src/lib/db.ts` (pulls in `pg` → `fs`/`net`/`tls`)
+- `openai` SDK (Node.js-only)
+- Any other server-only module
+
+This is what caused the "Module not found: Can't resolve 'fs'" build error in Phase 2.2 and drove the `models.ts` / `pricing.ts` split.
+
+**Pattern:**
+- **Client-safe:** `src/lib/ai/providers/models.ts` (OPENAI_MODELS constant — no imports), `src/lib/ai/providers/pricing.ts` (static table + pure function)
+- **Server-only:** `src/lib/ai/providers/openai.ts` (imports `openai` SDK), `src/lib/ai/tools/*.ts` (import `db`), `src/lib/ai/crypto.ts` (imports Node `crypto`)
+
+When adding new AI utility code, decide which side of the boundary it belongs on before writing the first import. See §16 for the Prisma client cache rule and §17 for the migration drift rule — both also apply to AI Route Handlers.
+
+---
+
 ## 17. Prisma Migration History Drift
 
 The `prisma/migrations/` directory contains 3 migration files that do not represent the full current DB schema. Several schema changes were applied directly via `prisma db execute` (ALTER TABLE, UPDATE, DELETE) to avoid a destructive reset that `prisma migrate dev` would trigger when it detects drift.

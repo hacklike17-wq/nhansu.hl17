@@ -12,11 +12,19 @@
 | `DATABASE_URL` | Yes | PostgreSQL connection string (with pooling if using Neon/PgBouncer) |
 | `NEXTAUTH_SECRET` | Yes | JWT signing secret — minimum 32 bytes |
 | `NEXTAUTH_URL` | Production only | Full public URL (e.g., `https://nhansu.hl17.com`) |
+| `AI_ENCRYPTION_KEY` | Required for AI | 64 hex chars (32 bytes) — encrypts stored OpenAI API keys at rest |
 
 Generate `NEXTAUTH_SECRET`:
 ```bash
 openssl rand -base64 32
 ```
+
+Generate `AI_ENCRYPTION_KEY`:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+**Important — `AI_ENCRYPTION_KEY` rotation:** changing this value after an API key has been stored in `ai_config` will make every stored key unreadable (AES-256-GCM ciphertext is bound to the key). The admin must navigate to `/caidat` → "Trợ lý AI" and re-enter the OpenAI API key after rotation. Treat this variable with the same care as `NEXTAUTH_SECRET`. The OpenAI SDK (`openai` npm package) must be installed — it is a production dependency bundled with the app, not a dev-only dependency.
 
 For Neon serverless (production), use the pooler connection string for `DATABASE_URL` and optionally set `DATABASE_URL_DIRECT` (non-pooled) for migrations.
 

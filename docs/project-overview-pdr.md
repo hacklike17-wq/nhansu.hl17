@@ -224,6 +224,37 @@ DRAFT → PENDING → APPROVED → LOCKED → PAID
 - Authenticated user changes own password via `/doi-mat-khau`
 - Current password verified against bcrypt hash before update
 
+### FR-17: AI Assistant (Trợ lý AI)
+
+**Config (admin-only, `/caidat` → "Trợ lý AI" tab):**
+- `AiConfig` table: one row per company — OpenAI API key (AES-256-GCM encrypted), model selector, 3 role-specific system prompts (`systemPromptAdmin`, `systemPromptManager`, `systemPromptEmployee`), `companyRules` (free-text context injected into every prompt), `enabled` flag, `monthlyTokenLimit`
+- Admin enters API key via `PATCH /api/ai/config`; GET returns only `apiKeyLast4` + `hasApiKey` — plaintext never round-trips
+- Provider: OpenAI only (GPT-4o, GPT-4o-mini, GPT-4-turbo, GPT-3.5-turbo, o1, o1-mini); Anthropic and Google shown as disabled placeholders
+- Test endpoint `POST /api/ai/test` runs the stored config (prompt + rules + key) so admin can validate before going live
+
+**Chat (all authenticated users):**
+- Floating `ChatWidget` (bottom-right, 460×600) mounted in `ProtectedLayout`; gated by `canUseAI = !!user`
+- `POST /api/ai/chat` — builds role-specific system prompt + company rules, calls OpenAI with conversation history (cap 20 messages); runs a max-5-iteration tool-calling loop via `openaiChatWithTools()`
+- Role-based tool sets:
+  - Admin: `get_company_overview`, `list_employees`, `get_employee_payroll`, `get_attendance_summary`, `get_kpi_violations`
+  - Manager / Employee: `get_my_info`, `get_my_payroll`, `get_my_attendance`, `get_my_kpi_violations`, `get_my_leave_history`
+- Tool context (`companyId`, `userId`, `role`, `employeeId`) injected from server session — LLM cannot influence scoping fields
+- System prompts document available tools, usage rules, and role hierarchy; admin prompt includes `=== CẤP BẬC & QUYỀN HẠN HỆ THỐNG ===`; manager/employee prompt explicitly forbids responding to queries about other employees (social-engineering defense)
+- Assistant bubbles render GFM markdown (`react-markdown` + `remark-gfm`); hover-revealed copy button; auto-resizing textarea (up to ~5 lines)
+- Small violet badge above bubbles when a tool was called
+
+**Conversation history:**
+- `GET /api/ai/chat/conversations` — user's 50 most recent conversations + message count
+- `GET /api/ai/chat/conversations/[id]` — full message list; 404 on ownership mismatch (existence not leaked)
+- `DELETE /api/ai/chat/conversations/[id]` — cascades via Prisma FK
+- Widget history overlay toggled via History icon; current conversation ID persisted to `localStorage` under key `nhansu.ai.currentConversationId`; 404 from server silently clears the key
+
+**Cost tracking:**
+- `GET /api/ai/usage?month=YYYY-MM` (admin-only) — monthly token/cost summary with per-user breakdown
+- Chat endpoint enforces `monthlyTokenLimit` (company-wide, current VN month) before calling OpenAI; returns 429 when limit is met; zero = unlimited
+- After each reply, `ai_usage_logs` row is atomically upserted (composite unique on `companyId + userId + month`)
+- `AiConfigTab` shows a progress-bar panel with top-10 users and a warning flag at 90 % of limit
+
 ---
 
 ## 3. Non-Functional Requirements
@@ -330,6 +361,15 @@ DRAFT → PENDING → APPROVED → LOCKED → PAID
 | `ExpenseRecord` | `expense_records` | Expense entries with approval status |
 | `BudgetRecord` | `budget_records` | Budget targets (actual computed on read) |
 | `DebtRecord` | `debt_records` | Receivables and payables |
+
+### AI Tables
+
+| Model | Table | Key Purpose |
+|-------|-------|------------|
+| `AiConfig` | `ai_config` | Per-company AI settings: encrypted API key, model, 3 role prompts, rules, enabled flag, monthly token limit |
+| `AiConversation` | `ai_conversations` | Per-user conversation threads; cascades to messages on delete |
+| `AiMessage` | `ai_messages` | Individual chat turns (role: user/assistant/tool) with optional `toolCalls` JSON |
+| `AiUsageLog` | `ai_usage_logs` | Monthly token usage per user; unique `(companyId, userId, month)`; upserted atomically after each reply |
 
 ### Key Enums
 

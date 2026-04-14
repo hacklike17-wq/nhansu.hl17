@@ -49,7 +49,8 @@ nhansu.hl17/
 │   │   ├── nghiphep/page.tsx       # Leave requests (client, SWR)
 │   │   ├── tuyendung/page.tsx      # Recruitment
 │   │   ├── phanquyen/page.tsx      # Permission groups
-│   │   ├── caidat/page.tsx         # Settings: PITBracket, InsuranceRate, SalaryColumn
+│   │   ├── caidat/page.tsx         # Settings: PITBracket, InsuranceRate, SalaryColumn, AI config
+│   │   │   └── _components/AiConfigTab.tsx  # Admin-only AI config tab: key input, model selector, prompts, cost progress bar
 │   │   ├── doi-mat-khau/page.tsx   # Password change
 │   │   └── api/
 │   │       ├── auth/[...nextauth]/route.ts   # Auth.js GET/POST handler
@@ -83,15 +84,26 @@ nhansu.hl17/
 │   │       ├── permission-groups/
 │   │       │   ├── route.ts        # GET, POST
 │   │       │   └── [id]/route.ts   # PATCH, DELETE
+│   │       ├── ai/
+│   │       │   ├── chat/
+│   │       │   │   ├── route.ts                     # POST — chat endpoint; assembles prompt, calls openaiChatWithTools(), logs usage
+│   │       │   │   └── conversations/
+│   │       │   │       ├── route.ts                 # GET — 50 most recent conversations + messageCount
+│   │       │   │       └── [id]/route.ts             # GET full messages, DELETE (cascade)
+│   │       │   ├── config/route.ts                  # GET (strips key), PATCH — AiConfig upsert (admin)
+│   │       │   ├── test/route.ts                    # POST — test stored config in one click (admin)
+│   │       │   └── usage/route.ts                   # GET — monthly token/cost summary + byUser (admin)
 │   │       ├── dashboard/
 │   │       │   ├── manager-overview/route.ts  # GET — today's pulse + action queue + month progress
 │   │       │   └── manager-team/route.ts      # GET — per-employee status, công, KPI, payroll status
 │   │       └── export/
 │   │           └── payroll/route.ts # GET — Excel export (ExcelJS)
 │   ├── components/
+│   │   ├── ai/
+│   │   │   └── ChatWidget.tsx      # Floating chat widget (460×600, bottom-right); history overlay; mounted in ProtectedLayout
 │   │   ├── auth/
 │   │   │   ├── AuthProvider.tsx    # SessionProvider + context bridge (useAuth hook)
-│   │   │   └── ProtectedLayout.tsx # Layout shell + redirect for unauthenticated
+│   │   │   └── ProtectedLayout.tsx # Layout shell + redirect for unauthenticated; mounts ChatWidget
 │   │   ├── layout/
 │   │   │   ├── Sidebar.tsx         # Permission-filtered navigation
 │   │   │   ├── Topbar.tsx          # Header bar
@@ -111,6 +123,17 @@ nhansu.hl17/
 │   │   ├── useDeductions.ts        # useDeductions()
 │   │   └── useLeaveRequests.ts     # useLeaveRequests()
 │   ├── lib/
+│   │   ├── ai/
+│   │   │   ├── crypto.ts           # AES-256-GCM encrypt/decrypt for stored API keys; requires AI_ENCRYPTION_KEY env var
+│   │   │   ├── providers/
+│   │   │   │   ├── models.ts       # OPENAI_MODELS constant — client-safe (no server imports)
+│   │   │   │   ├── openai.ts       # openaiChatWithTools() — max-5-iteration tool loop; server-only
+│   │   │   │   └── pricing.ts      # USD-per-1M-token table + estimateCostUSD() — client-safe
+│   │   │   └── tools/
+│   │   │       ├── types.ts        # ToolContext, ToolResult, Tool interfaces
+│   │   │       ├── admin-tools.ts  # ADMIN_TOOLS: 5 company-wide query tools
+│   │   │       ├── self-tools.ts   # SELF_TOOLS: 5 self-scope tools for manager/employee
+│   │   │       └── index.ts        # getToolsForRole(role), toolToOpenAISchema()
 │   │   ├── db.ts                   # Prisma singleton (PrismaPg adapter)
 │   │   ├── formula.ts              # Formula engine (evalFormula, topologicalSort, detectCircular)
 │   │   ├── format.ts               # fmtVND(), fmtMoney(), fmtDate()
@@ -303,6 +326,9 @@ SWR-based client hook for payroll data:
 | `lucide-react` | ^1.8.0 | Icon library |
 | `recharts` | ^3.8.1 | Chart components |
 | `next-themes` | ^0.4.6 | Theme management |
+| `openai` | latest | OpenAI SDK (server-only — not imported by client components) |
+| `react-markdown` | ^10 | GFM markdown rendering in assistant bubbles |
+| `remark-gfm` | ^4 | GitHub Flavored Markdown plugin for react-markdown |
 | `class-variance-authority` | ^0.7.1 | Variant class composition |
 | `clsx` + `tailwind-merge` | latest | Conditional class merging |
 
@@ -374,6 +400,15 @@ SWR-based client hook for payroll data:
 | `insurance_rates` | `id`, `companyId`, `type InsuranceType`, `employeeRate Decimal(5,4)`, `employerRate Decimal(5,4)`, `validFrom`, `validTo?` |
 | `permission_groups` | `id`, `companyId`, `name` (unique per company), `label`, `permissions String[]`, `isSystem Boolean` |
 | `audit_logs` | `id`, `companyId`, `entityType`, `entityId`, `action`, `changedBy?`, `changes Json?`, `oldData Json?`, `newData Json?` |
+
+### AI Tables
+
+| Table | Key Columns |
+|-------|------------|
+| `ai_config` | `id`, `companyId` (unique), `provider`, `model`, `apiKeyEncrypted`, `apiKeyIv`, `apiKeyLast4`, `systemPromptAdmin`, `systemPromptManager`, `systemPromptEmployee`, `companyRules`, `enabled Boolean`, `monthlyTokenLimit Int` |
+| `ai_conversations` | `id`, `companyId`, `userId`, `title?`, `createdAt`, `updatedAt` — 1:N to `ai_messages` with cascade delete |
+| `ai_messages` | `id`, `conversationId`, `role` (user/assistant/tool), `content`, `toolCalls Json?`, `createdAt` |
+| `ai_usage_logs` | `id`, `companyId`, `userId`, `month @db.Date`, `inputTokens Int`, `outputTokens Int`, `requestCount Int` — unique `(companyId, userId, month)`; upserted atomically |
 
 ---
 
