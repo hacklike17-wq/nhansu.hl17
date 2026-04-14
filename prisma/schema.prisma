@@ -454,6 +454,37 @@ model SalaryValue {
 }
 
 // ──────────────────────────────────────────────────────────────
+// AI ASSISTANT
+// ──────────────────────────────────────────────────────────────
+
+// One row per company — admin-managed AI assistant config.
+// apiKeyEncrypted is AES-256-GCM ciphertext; the plaintext key is
+// NEVER returned to the client. apiKeyLast4 is shown in the UI
+// for identification only.
+model AiConfig {
+  id                   String   @id @default(cuid())
+  companyId            String   @unique
+  provider             String   @default("openai") // openai | anthropic | google
+  model                String   @default("gpt-4o-mini")
+  apiKeyEncrypted      String?
+  apiKeyLast4          String?
+  // Role-specific system prompts. Data scope:
+  //   admin    → entire company (full tools)
+  //   manager  → self only (same scope as employee, different tone)
+  //   employee → self only
+  systemPromptAdmin    String   @default("")
+  systemPromptManager  String   @default("")
+  systemPromptEmployee String   @default("")
+  companyRules         String   @default("")
+  enabled              Boolean  @default(false)
+  monthlyTokenLimit    Int      @default(1000000)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("ai_configs")
+}
+
+// ──────────────────────────────────────────────────────────────
 // FINANCE
 // ──────────────────────────────────────────────────────────────
 

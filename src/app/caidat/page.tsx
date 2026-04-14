@@ -7,7 +7,8 @@ import { useEmployees, createEmployee, updateEmployee, deleteEmployee } from '@/
 import { useSalaryColumns } from '@/hooks/useSalaryColumns'
 import { mutate as globalMutate } from 'swr'
 import { fmtVND, fmtDate } from '@/lib/format'
-import { Building2, Settings, Calculator, Users, Pencil, Trash2, Search, X, Plus, GripVertical, FlaskConical, Check, KeyRound, Shuffle } from 'lucide-react'
+import { Building2, Settings, Calculator, Users, Pencil, Trash2, Search, X, Plus, GripVertical, FlaskConical, Check, KeyRound, Shuffle, Sparkles } from 'lucide-react'
+import AiConfigTab from './_components/AiConfigTab'
 import type { SalaryColumn } from '@/types'
 import { SYSTEM_VARS } from '@/constants/salary'
 import {
@@ -23,7 +24,7 @@ export default function CaiDatPage() {
   const { employees, mutate: mutateEmps } = useEmployees({ search })
   const { salaryColumns, isLoading: colsLoading, mutate: mutateCols } = useSalaryColumns()
 
-  const [tab, setTab] = useState<'company' | 'system' | 'salary' | 'nhansu'>('company')
+  const [tab, setTab] = useState<'company' | 'system' | 'salary' | 'nhansu' | 'ai'>('company')
 
   /* ── Employee management state ── */
   const [modalOpen, setModalOpen] = useState(false)
@@ -346,6 +347,7 @@ export default function CaiDatPage() {
           ['system', 'Hệ thống', <Settings key="s" size={13}/>],
           ['salary', 'Cấu hình lương', <Calculator key="c" size={13}/>],
           ...(canSeeNhansu ? [['nhansu', 'Quản lý nhân sự', <Users key="u" size={13}/>]] : []),
+          ...(canConfig   ? [['ai', 'AI', <Sparkles key="ai" size={13}/>]] : []),
         ] as [string, string, React.ReactNode][]).map(([key, label, icon]) => (
           <button
             key={key}
@@ -638,6 +640,10 @@ export default function CaiDatPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {tab === 'ai' && canConfig && (
+        <AiConfigTab />
       )}
 
       {tab === 'nhansu' && canSeeNhansu && (
