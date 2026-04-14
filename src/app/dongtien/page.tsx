@@ -38,29 +38,36 @@ export default function DongTienPage() {
           <h3 className="text-[13px] font-bold text-gray-900">Lịch sử dòng tiền</h3>
           <p className="text-[11px] text-gray-400 mt-0.5">Tháng 4/2026</p>
         </div>
-        <div className="divide-y divide-gray-50">
-          {CASHFLOW_DATA.map(r => (
-            <div key={r.id} className="px-5 py-3.5 flex items-center gap-4 hover:bg-blue-50/30 transition-colors">
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${r.type === 'in' ? 'bg-green-50' : 'bg-red-50'}`}>
-                {r.type === 'in'
-                  ? <ArrowUpRight size={16} className="text-green-600" />
-                  : <ArrowDownRight size={16} className="text-red-600" />
-                }
+        {CASHFLOW_DATA.length === 0 ? (
+          <div className="px-5 py-12 text-center text-xs text-gray-400">
+            Chưa có giao dịch dòng tiền nào. Bản ghi sẽ xuất hiện khi bạn thêm
+            khoản thu/chi hoặc kết nối sổ kế toán.
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {CASHFLOW_DATA.map(r => (
+              <div key={r.id} className="px-5 py-3.5 flex items-center gap-4 hover:bg-blue-50/30 transition-colors">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${r.type === 'in' ? 'bg-green-50' : 'bg-red-50'}`}>
+                  {r.type === 'in'
+                    ? <ArrowUpRight size={16} className="text-green-600" />
+                    : <ArrowDownRight size={16} className="text-red-600" />
+                  }
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-semibold text-gray-900">{r.name}</div>
+                  <div className="text-[11px] text-gray-400 mt-0.5">{r.description}</div>
+                </div>
+                <div className="text-[11px] text-gray-400 shrink-0">{r.meta}</div>
+                <div className={`text-sm font-bold shrink-0 ${r.type === 'in' ? 'text-green-600' : 'text-red-600'}`}>
+                  {r.amount}
+                </div>
+                <div className="text-[11px] text-gray-400 w-24 text-right shrink-0">
+                  Số dư: {fmtVND(r.balance)}
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-semibold text-gray-900">{r.name}</div>
-                <div className="text-[11px] text-gray-400 mt-0.5">{r.description}</div>
-              </div>
-              <div className="text-[11px] text-gray-400 shrink-0">{r.meta}</div>
-              <div className={`text-sm font-bold shrink-0 ${r.type === 'in' ? 'text-green-600' : 'text-red-600'}`}>
-                {r.amount}
-              </div>
-              <div className="text-[11px] text-gray-400 w-24 text-right shrink-0">
-                Số dư: {fmtVND(r.balance)}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </PageShell>
   )

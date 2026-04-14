@@ -32,35 +32,45 @@ export default function BaoCaoPage() {
       </div>
 
       <div className="space-y-3">
-        {REPORT_DATA.map(r => {
-          const st = STATUS_MAP[r.status]
-          const tp = TYPE_MAP[r.type]
-          return (
-            <div key={r.id} className="bg-white border border-gray-200 rounded-xl p-5 flex items-center gap-4 hover:border-blue-200 transition-colors">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${st.cls}`}>
-                {st.icon}
-              </div>
-              <div className="flex-1">
-                <h3 className="text-[13px] font-bold text-gray-900">{r.name}</h3>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${tp.cls}`}>{tp.label}</span>
-                  <span className="text-[11px] text-gray-400">{r.period} · Tạo bởi {r.generatedBy}</span>
-                </div>
-              </div>
-              <div className="text-[11px] text-gray-400">
-                {new Date(r.generatedAt).toLocaleString('vi-VN')}
-              </div>
-              {r.status === 'ready' && (
-                <button className="flex items-center gap-1.5 px-3 py-2 text-xs text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50">
-                  <Download size={13} /> Tải xuống
-                </button>
-              )}
-              {r.status === 'generating' && (
-                <span className="text-xs text-blue-500 font-medium">Đang tạo...</span>
-              )}
+        {REPORT_DATA.length === 0 ? (
+          <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
+            <FileText size={36} className="mx-auto text-gray-300 mb-3" />
+            <div className="text-sm font-semibold text-gray-700">Chưa có báo cáo nào</div>
+            <div className="text-xs text-gray-400 mt-1">
+              Báo cáo tự động sẽ xuất hiện ở đây khi bạn tạo bản xuất mới.
             </div>
-          )
-        })}
+          </div>
+        ) : (
+          REPORT_DATA.map(r => {
+            const st = STATUS_MAP[r.status]
+            const tp = TYPE_MAP[r.type]
+            return (
+              <div key={r.id} className="bg-white border border-gray-200 rounded-xl p-5 flex items-center gap-4 hover:border-blue-200 transition-colors">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${st.cls}`}>
+                  {st.icon}
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-[13px] font-bold text-gray-900">{r.name}</h3>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${tp.cls}`}>{tp.label}</span>
+                    <span className="text-[11px] text-gray-400">{r.period} · Tạo bởi {r.generatedBy}</span>
+                  </div>
+                </div>
+                <div className="text-[11px] text-gray-400">
+                  {new Date(r.generatedAt).toLocaleString('vi-VN')}
+                </div>
+                {r.status === 'ready' && (
+                  <button className="flex items-center gap-1.5 px-3 py-2 text-xs text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50">
+                    <Download size={13} /> Tải xuống
+                  </button>
+                )}
+                {r.status === 'generating' && (
+                  <span className="text-xs text-blue-500 font-medium">Đang tạo...</span>
+                )}
+              </div>
+            )
+          })
+        )}
       </div>
     </PageShell>
   )

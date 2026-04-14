@@ -201,10 +201,31 @@ npm run db:seed       # npx ts-node prisma/seed.ts — seed data (development on
 npm run db:reset      # prisma migrate reset --force — drop and recreate DB (destructive!)
 ```
 
-For production migration deployment:
+## Schema Strategy: `db push`, not `migrate deploy`
+
+**Important** — this project does NOT use `prisma migrate deploy` as its
+production rollout mechanism. The `prisma/migrations/` folder contains only a
+3-file baseline captured during initial development. Subsequent schema changes
+(Phase 6 calc modes, Phase 08 versioning, salary line-item entries, the AI
+assistant tables) were added via direct SQL / `prisma db execute` in dev and
+never committed as proper migration files — so running `prisma migrate deploy`
+against a fresh database leaves the schema missing columns, enums, and tables.
+
+Until we reset the migration baseline (one-time cleanup, tracked separately),
+deployments sync the schema via:
+
 ```bash
-npx prisma migrate deploy   # applies pending migrations without creating new ones (safe for production)
+npx prisma db push --accept-data-loss
 ```
+
+`db push` reads `schema.prisma` and issues DDL to make the target database
+match it. Idempotent, so re-running is safe. `--accept-data-loss` is required
+because `db push` conservatively refuses to drop a column by default — if a
+future schema change removes a column, review the diff carefully before
+deploying.
+
+The VPS `deploy.sh` script already runs `db push`. See
+`/var/www/nhansu/deploy.sh` on the server.
 
 ---
 

@@ -70,27 +70,35 @@ export default function CongNoPage() {
               </tr>
             </thead>
             <tbody>
-              {data.map(r => {
-                const st = STATUS_MAP[r.status]
-                return (
-                  <tr key={r.id} className="border-b border-gray-50 hover:bg-blue-50/30">
-                    <td className="px-4 py-2.5 font-medium text-gray-900">{r.company}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{r.contactPerson}</td>
-                    <td className="px-4 py-2.5 font-mono text-gray-500">{r.invoiceNo}</td>
-                    <td className="px-4 py-2.5 text-right text-gray-700">{fmtVND(r.amount)}</td>
-                    <td className="px-4 py-2.5 text-right text-green-600">{fmtVND(r.paid)}</td>
-                    <td className="px-4 py-2.5 text-right font-bold text-gray-900">{fmtVND(r.remaining)}</td>
-                    <td className="px-4 py-2.5 text-gray-500">{fmtDate(r.dueDate)}</td>
-                    <td className="px-4 py-2.5 text-center">
-                      <span className={`inline-block px-2 py-0.5 rounded border text-[10px] font-semibold ${st.cls}`}>
-                        {st.label}
-                        {r.daysOverdue > 0 && ` (${r.daysOverdue}d)`}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-gray-500 max-w-[150px] truncate">{r.note}</td>
-                  </tr>
-                )
-              })}
+              {data.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="px-4 py-12 text-center text-xs text-gray-400">
+                    Chưa có khoản {tab === 'receivable' ? 'phải thu' : 'phải trả'} nào.
+                  </td>
+                </tr>
+              ) : (
+                data.map(r => {
+                  const st = STATUS_MAP[r.status]
+                  return (
+                    <tr key={r.id} className="border-b border-gray-50 hover:bg-blue-50/30">
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{r.company}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{r.contactPerson}</td>
+                      <td className="px-4 py-2.5 font-mono text-gray-500">{r.invoiceNo}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-700">{fmtVND(r.amount)}</td>
+                      <td className="px-4 py-2.5 text-right text-green-600">{fmtVND(r.paid)}</td>
+                      <td className="px-4 py-2.5 text-right font-bold text-gray-900">{fmtVND(r.remaining)}</td>
+                      <td className="px-4 py-2.5 text-gray-500">{fmtDate(r.dueDate)}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded border text-[10px] font-semibold ${st.cls}`}>
+                          {st.label}
+                          {r.daysOverdue > 0 && ` (${r.daysOverdue}d)`}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-500 max-w-[150px] truncate">{r.note}</td>
+                    </tr>
+                  )
+                })
+              )}
             </tbody>
           </table>
         </div>

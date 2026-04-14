@@ -112,9 +112,9 @@ export default function SalaryCashflowChart({ title = 'Dòng tiền lương' }: 
         <div className="text-[11px] text-red-500 mb-2">Lỗi tải dữ liệu</div>
       )}
 
-      {series.length === 0 && !isLoading ? (
+      {series.length === 0 ? (
         <div className="py-12 text-center text-xs text-gray-400">
-          Chưa có bảng lương nào được duyệt / trả
+          {isLoading ? 'Đang tải dữ liệu...' : 'Chưa có bảng lương nào được duyệt / trả'}
         </div>
       ) : (
         <>

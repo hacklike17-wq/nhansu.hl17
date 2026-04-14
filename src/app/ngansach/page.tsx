@@ -16,7 +16,8 @@ export default function NganSachPage() {
   const totalPlanned = BUDGET_DETAIL_DATA.reduce((s, r) => s + r.planned, 0)
   const totalActual = BUDGET_DETAIL_DATA.reduce((s, r) => s + r.actual, 0)
   const totalRemaining = totalPlanned - totalActual
-  const overallPct = Math.round((totalActual / totalPlanned) * 100)
+  // Guard against divide-by-zero when the budget list is empty.
+  const overallPct = totalPlanned > 0 ? Math.round((totalActual / totalPlanned) * 100) : 0
 
   return (
     <PageShell breadcrumb="Tài chính" title="Ngân sách">
@@ -57,31 +58,39 @@ export default function NganSachPage() {
               </tr>
             </thead>
             <tbody>
-              {BUDGET_DETAIL_DATA.map(r => (
-                <tr key={r.id} className="border-b border-gray-50 hover:bg-blue-50/30">
-                  <td className="px-4 py-3 font-semibold text-gray-900">{r.category}</td>
-                  <td className="px-4 py-3 text-gray-600">{r.department}</td>
-                  <td className="px-4 py-3 text-right text-gray-700">{fmtVND(r.planned)}</td>
-                  <td className="px-4 py-3 text-right font-medium text-gray-900">{fmtVND(r.actual)}</td>
-                  <td className="px-4 py-3 text-right text-gray-600">{fmtVND(r.remaining)}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{ width: `${Math.min(r.pct, 100)}%`, background: r.color }}
-                        />
-                      </div>
-                      <span className="text-[11px] font-bold text-gray-600 w-8 text-right">{r.pct}%</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`inline-block px-2 py-0.5 rounded border text-[10px] font-semibold ${STATUS_CLS[r.status]}`}>
-                      {STATUS_LABEL[r.status]}
-                    </span>
+              {BUDGET_DETAIL_DATA.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-12 text-center text-xs text-gray-400">
+                    Chưa có hạng mục ngân sách nào. Hãy thiết lập kế hoạch cho từng phòng ban.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                BUDGET_DETAIL_DATA.map(r => (
+                  <tr key={r.id} className="border-b border-gray-50 hover:bg-blue-50/30">
+                    <td className="px-4 py-3 font-semibold text-gray-900">{r.category}</td>
+                    <td className="px-4 py-3 text-gray-600">{r.department}</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{fmtVND(r.planned)}</td>
+                    <td className="px-4 py-3 text-right font-medium text-gray-900">{fmtVND(r.actual)}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{fmtVND(r.remaining)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{ width: `${Math.min(r.pct, 100)}%`, background: r.color }}
+                          />
+                        </div>
+                        <span className="text-[11px] font-bold text-gray-600 w-8 text-right">{r.pct}%</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-block px-2 py-0.5 rounded border text-[10px] font-semibold ${STATUS_CLS[r.status]}`}>
+                        {STATUS_LABEL[r.status]}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

@@ -78,23 +78,31 @@ export default function ChiPhiPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(r => {
-                const st = STATUS_MAP[r.status]
-                return (
-                  <tr key={r.id} className="border-b border-gray-50 hover:bg-blue-50/30">
-                    <td className="px-4 py-2.5 text-gray-500">{fmtDate(r.date)}</td>
-                    <td className="px-4 py-2.5 font-medium text-gray-900">{r.vendor}</td>
-                    <td className="px-4 py-2.5 text-gray-600 max-w-[200px] truncate">{r.description}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{CAT_MAP[r.category]}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{r.department}</td>
-                    <td className="px-4 py-2.5 text-right font-bold text-red-600">{fmtVND(r.amount)}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{r.approver}</td>
-                    <td className="px-4 py-2.5 text-center">
-                      <span className={`inline-block px-2 py-0.5 rounded border text-[10px] font-semibold ${st.cls}`}>{st.label}</span>
-                    </td>
-                  </tr>
-                )
-              })}
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center text-xs text-gray-400">
+                    Chưa có khoản chi phí nào. Hãy thêm bản ghi đầu tiên.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map(r => {
+                  const st = STATUS_MAP[r.status]
+                  return (
+                    <tr key={r.id} className="border-b border-gray-50 hover:bg-blue-50/30">
+                      <td className="px-4 py-2.5 text-gray-500">{fmtDate(r.date)}</td>
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{r.vendor}</td>
+                      <td className="px-4 py-2.5 text-gray-600 max-w-[200px] truncate">{r.description}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{CAT_MAP[r.category]}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{r.department}</td>
+                      <td className="px-4 py-2.5 text-right font-bold text-red-600">{fmtVND(r.amount)}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{r.approver}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded border text-[10px] font-semibold ${st.cls}`}>{st.label}</span>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
             </tbody>
           </table>
         </div>
