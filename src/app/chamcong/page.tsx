@@ -130,13 +130,20 @@ export default function ChamCongPage() {
     name: e.fullName, // backward compat
   })), [rawEmployees])
 
+  // Manager-only: filter display to a single employee (purely UI — does not
+  // affect any save/calc logic, just narrows which rows the 3 tables render).
+  const [filterEmployeeId, setFilterEmployeeId] = useState<string | null>(null)
+
   // Filter targets
-  const targets = useMemo(
-    () => isManager
+  const targets = useMemo(() => {
+    const base = isManager
       ? employees.filter((e: any) => e.accountStatus !== 'NO_ACCOUNT')
-      : employees.filter((e: any) => e.id === user?.employeeId),
-    [isManager, employees, user]
-  )
+      : employees.filter((e: any) => e.id === user?.employeeId)
+    if (isManager && filterEmployeeId) {
+      return base.filter((e: any) => e.id === filterEmployeeId)
+    }
+    return base
+  }, [isManager, employees, user, filterEmployeeId])
 
   // Normalize WorkUnits — date → YYYY-MM-DD string
   const attendance = useMemo(() => rawWorkUnits.map((w: any) => ({
@@ -504,6 +511,41 @@ export default function ChamCongPage() {
           <span className={`text-[11px] font-medium ${initMsg.startsWith('Lỗi') ? 'text-red-500' : 'text-green-600'}`}>
             {initMsg}
           </span>
+        )}
+        {isManager && (
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-gray-400">Nhân viên</label>
+            <div className="relative">
+              <select
+                value={filterEmployeeId ?? ''}
+                onChange={e => setFilterEmployeeId(e.target.value || null)}
+                className="border border-gray-200 rounded-lg pl-2.5 pr-7 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 h-8 max-w-[200px] truncate bg-white appearance-none cursor-pointer"
+              >
+                <option value="">Tất cả ({employees.filter((e: any) => e.accountStatus !== 'NO_ACCOUNT').length})</option>
+                {employees
+                  .filter((e: any) => e.accountStatus !== 'NO_ACCOUNT')
+                  .sort((a: any, b: any) => a.fullName.localeCompare(b.fullName))
+                  .map((e: any) => (
+                    <option key={e.id} value={e.id}>{e.fullName}{e.department ? ` — ${e.department}` : ''}</option>
+                  ))}
+              </select>
+              <svg
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none"
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+            {filterEmployeeId && (
+              <button
+                onClick={() => setFilterEmployeeId(null)}
+                className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-700 px-1.5 py-1 rounded hover:bg-gray-100"
+                title="Bỏ lọc"
+              >
+                <X size={11} /> Bỏ lọc
+              </button>
+            )}
+          </div>
         )}
         <div className="h-4 w-px bg-gray-200" />
         <div className="flex items-center gap-2.5 text-[11px] text-gray-400">
