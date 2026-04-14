@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { CreateDeductionSchema } from "@/lib/schemas/attendance"
 import { requirePermission, errorResponse } from "@/lib/permission"
+import { requireDraftPayroll } from "@/lib/chamcong-guard"
 
 export async function GET(req: NextRequest) {
   try {
@@ -56,6 +57,11 @@ export async function POST(req: NextRequest) {
 
     const { employeeId, date, type, delta, reason } = parsed.data
     const dateObj = new Date(date + "T00:00:00Z")
+
+    // Block new deductions once the target month's payroll is no longer DRAFT.
+    // Without this guard, a PENDING deduction can land on a LOCKED/PAID
+    // payroll and diverge from the locked snapshot on approval.
+    await requireDraftPayroll(employeeId, dateObj)
 
     const record = await db.deductionEvent.create({
       data: { companyId, employeeId, date: dateObj, type, delta, reason, status: "PENDING" },

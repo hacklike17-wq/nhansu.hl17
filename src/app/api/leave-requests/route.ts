@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success)
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-    const { employeeId, type, startDate, endDate, totalDays, reason } = parsed.data
+    const { employeeId, type, startDate, endDate, reason } = parsed.data
 
     // Employees can only create leaves for themselves
     if (ctx.role === "employee" && employeeId !== ctx.employeeId) {
@@ -52,13 +52,23 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Compute totalDays server-side instead of trusting the client — prevents
+    // "submit 5-day range, claim 10 days" exploits and keeps the LeaveRequest
+    // row in sync with its startDate/endDate invariant.
+    const startMs = Date.parse(startDate + "T00:00:00Z")
+    const endMs = Date.parse(endDate + "T00:00:00Z")
+    const totalDays = Math.max(1, Math.round((endMs - startMs) / 86_400_000) + 1)
+    if (totalDays > 365) {
+      return NextResponse.json({ error: "Phạm vi nghỉ phép vượt quá 365 ngày" }, { status: 400 })
+    }
+
     const request = await db.leaveRequest.create({
       data: {
         companyId,
         employeeId,
         type,
-        startDate: new Date(startDate + "T00:00:00Z"),
-        endDate: new Date(endDate + "T00:00:00Z"),
+        startDate: new Date(startMs),
+        endDate: new Date(endMs),
         totalDays,
         reason,
         status: "PENDING",
