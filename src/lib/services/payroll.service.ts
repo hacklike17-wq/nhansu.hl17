@@ -2,6 +2,12 @@ import { db } from "@/lib/db"
 import { evalFormula, buildDependencyGraph, topologicalSort, extractVars } from "@/lib/formula"
 import { calcPIT, calcPITFallback } from "@/lib/payroll/pit"
 import { calcEmployeeInsurance } from "@/lib/payroll/insurance"
+import { checkPayrollAnomalies, type Anomaly } from "@/lib/payroll/anomaly"
+
+// Re-export so existing `from "@/lib/services/payroll.service"` imports
+// of the Anomaly type / checkPayrollAnomalies function keep working.
+export { checkPayrollAnomalies }
+export type { Anomaly }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,49 +92,8 @@ export interface PayrollCalcResult {
   anomalies:           Anomaly[]         // Phase 09: detected anomalies
 }
 
-// ─── Phase 09: Anomaly Detection ─────────────────────────────────────────────
-
-export interface Anomaly {
-  rule: string
-  severity: "error" | "warning"
-  message: string
-}
-
-/**
- * Check a computed payroll result for suspicious/impossible values.
- * Error-level anomalies block DRAFT → PENDING transition.
- * Warning-level anomalies are shown but don't block.
- */
-export function checkPayrollAnomalies(
-  payroll: { netSalary: number; congSoNhan: number; grossSalary: number; pitTax: number },
-  prev?: { netSalary: number } | null
-): Anomaly[] {
-  const anomalies: Anomaly[] = []
-
-  if (payroll.netSalary < 0)
-    anomalies.push({ rule: "NEGATIVE_NET", severity: "error", message: "Lương thực nhận âm" })
-
-  if (payroll.congSoNhan > 31)
-    anomalies.push({ rule: "EXCESS_ATTENDANCE", severity: "error", message: "Công số nhận vượt quá 31 ngày" })
-
-  if (payroll.pitTax > payroll.grossSalary && payroll.grossSalary > 0)
-    anomalies.push({ rule: "TAX_EXCEEDS_GROSS", severity: "error", message: "Thuế PIT lớn hơn lương gross" })
-
-  if (payroll.grossSalary === 0 && payroll.congSoNhan > 0)
-    anomalies.push({ rule: "ZERO_GROSS_WITH_ATTENDANCE", severity: "warning", message: "Lương gross = 0 dù có công số" })
-
-  if (prev && prev.netSalary > 0) {
-    const change = Math.abs(payroll.netSalary - prev.netSalary) / prev.netSalary
-    if (change > 0.3)
-      anomalies.push({
-        rule: "LARGE_CHANGE",
-        severity: "warning",
-        message: `Lương thay đổi ${Math.round(change * 100)}% so tháng trước`,
-      })
-  }
-
-  return anomalies
-}
+// Anomaly type + checkPayrollAnomalies moved to src/lib/payroll/anomaly.ts
+// (Phase 5c). Re-exported at the top of this file for backward compat.
 
 // ─── Phase 08: Versioned column lookup ───────────────────────────────────────
 
