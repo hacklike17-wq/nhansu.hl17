@@ -118,6 +118,25 @@ export default function ImportExportTab() {
 
   async function confirmCommit() {
     if (!pendingFile || enabled.size === 0) return
+
+    // Safeguard — force the user to re-read which month the data will land
+    // in. Without this it's easy to click "Xác nhận" while the picker is
+    // still on last month's value and silently corrupt that month's rows.
+    const totalRows =
+      response?.sheets
+        ?.filter(s => enabled.has(s.sheetType))
+        .reduce((sum, s) => sum + s.summary.toUpsert, 0) ?? 0
+    const sheetLabels = Array.from(enabled)
+      .map(t => TYPE_META[t].label)
+      .join(' + ')
+    const ok = window.confirm(
+      `Nạp ${totalRows} bản ghi vào THÁNG ${month}?\n\n` +
+        `Loại dữ liệu: ${sheetLabels}\n` +
+        `Nhắc: dữ liệu sẽ ghi vào ĐÚNG tháng bạn đã chọn ở trên, không phải tháng trong file.\n\n` +
+        `Bấm OK để xác nhận, Cancel để quay lại chỉnh picker tháng.`
+    )
+    if (!ok) return
+
     setCommitting(true)
     try {
       const fd = new FormData()
