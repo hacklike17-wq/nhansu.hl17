@@ -22,6 +22,7 @@ import {
 } from './_lib/chamcong-helpers'
 import LogDrawer from './_components/LogDrawer'
 import CellEditModal from './_components/CellEditModal'
+import OtEditModal from './_components/OtEditModal'
 import KpiEditModal from './_components/KpiEditModal'
 
 /* ═════════════════════════════════════════════════════
@@ -273,26 +274,36 @@ export default function ChamCongPage() {
   }
 
   /* ══════════════ TABLE 2: TĂNG CA ══════════════ */
-  type OtEdit = { empId: string; empName: string; date: string }
-  const [otEdit,    setOtEdit]    = useState<OtEdit | null>(null)
-  const [otHours,   setOtHours]   = useState<number>(0)
-  const [otNote,    setOtNote]    = useState<string>('')
-  const [otSaving,  setOtSaving]  = useState(false)
+  // Form state (hours, note) moved into OtEditModal (Phase 6d). Parent
+  // carries the initial seed values alongside the cell identity.
+  type OtEdit = {
+    empId: string
+    empName: string
+    date: string
+    initialHours: number
+    initialNote: string
+  }
+  const [otEdit, setOtEdit] = useState<OtEdit | null>(null)
+  const [otSaving, setOtSaving] = useState(false)
 
   function openOtEdit(empId: string, empName: string, date: string) {
     if (!isManager) return
     const existing = otMap[`${empId}|${date}`]
-    setOtHours(existing?.hours ?? 0)
-    setOtNote(existing?.note ?? '')
     setSaveError(null)
-    setOtEdit({ empId, empName, date })
+    setOtEdit({
+      empId,
+      empName,
+      date,
+      initialHours: existing?.hours ?? 0,
+      initialNote: existing?.note ?? '',
+    })
   }
-  async function saveOt() {
+  async function saveOt(hours: number, note: string) {
     if (!otEdit) return
     setOtSaving(true)
     setSaveError(null)
     try {
-      await upsertOvertimeEntry({ employeeId: otEdit.empId, date: otEdit.date, hours: otHours, note: otNote })
+      await upsertOvertimeEntry({ employeeId: otEdit.empId, date: otEdit.date, hours, note })
       await mutateOT()
       setOtEdit(null)
     } catch (e: any) {
@@ -752,57 +763,18 @@ export default function ChamCongPage() {
         />
       )}
 
-      {/* ══════════════════════════════════════════
-          MODAL: EDIT TĂNG CA
-          ══════════════════════════════════════════ */}
+      {/* MODAL: EDIT TĂNG CA — extracted to _components/OtEditModal (Phase 6d) */}
       {otEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3" onClick={() => setOtEdit(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-[288px] p-5" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">{otEdit.empName}</p>
-                <p className="text-xs text-gray-400">{otEdit.date} · Tăng ca</p>
-              </div>
-              <button onClick={() => setOtEdit(null)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
-            </div>
-
-            <div className="mb-3">
-              <label className="block text-[11px] font-medium text-gray-500 mb-1.5">Số giờ tăng ca</label>
-              <div className="flex gap-1.5 mb-2">
-                {[0, 1, 1.5, 2, 2.5, 3].map(v => (
-                  <button key={v} onClick={() => setOtHours(v)}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${otHours === v ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-700 border-gray-200 hover:border-orange-400'}`}>
-                    {v === 0 ? 'Xóa' : `${v}h`}
-                  </button>
-                ))}
-              </div>
-              <input type="number" step={0.5} min={0} max={12} value={otHours}
-                onChange={e => setOtHours(parseFloat(e.target.value) || 0)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
-            </div>
-
-            <div className="mb-4">
-              <label className="block text-[11px] font-medium text-gray-500 mb-1.5">Ghi chú</label>
-              <input type="text" value={otNote} onChange={e => setOtNote(e.target.value)}
-                placeholder="Lý do tăng ca..."
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
-            </div>
-
-            {saveError && (
-              <div className="mb-3 flex items-start gap-2 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-[11px]">
-                <AlertTriangle size={13} className="shrink-0 mt-0.5"/>
-                <span className="leading-relaxed">{saveError}</span>
-              </div>
-            )}
-            <div className="flex gap-2">
-              <button onClick={() => { setOtEdit(null); setSaveError(null) }} className="flex-1 py-2 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">Đóng</button>
-              <button onClick={saveOt} disabled={otSaving}
-                className="flex-1 py-2 text-xs font-semibold bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-60">
-                {otSaving ? 'Đang lưu...' : 'Lưu'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <OtEditModal
+          empName={otEdit.empName}
+          date={otEdit.date}
+          initialHours={otEdit.initialHours}
+          initialNote={otEdit.initialNote}
+          saving={otSaving}
+          saveError={saveError}
+          onClose={() => { setOtEdit(null); setSaveError(null) }}
+          onSave={saveOt}
+        />
       )}
 
       {/* MODAL: EDIT KPI — extracted to _components/KpiEditModal (Phase 6c) */}
