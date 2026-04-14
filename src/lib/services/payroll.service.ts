@@ -4,6 +4,7 @@ import { calcPIT, calcPITFallback } from "@/lib/payroll/pit"
 import { calcEmployeeInsurance } from "@/lib/payroll/insurance"
 import { checkPayrollAnomalies, type Anomaly } from "@/lib/payroll/anomaly"
 import { getInsuranceRates, getPITBrackets } from "@/lib/payroll/rates-loader"
+import { getColumnsForMonth } from "@/lib/payroll/columns-loader"
 
 // Re-export so existing `from "@/lib/services/payroll.service"` imports
 // of the Anomaly type / checkPayrollAnomalies function keep working.
@@ -64,36 +65,7 @@ export interface PayrollCalcResult {
 
 // ─── Phase 08: Versioned column lookup ───────────────────────────────────────
 
-/**
- * Fetch salary columns with formulas as-of a given month.
- * Latest SalaryColumnVersion with effectiveFrom <= month takes precedence
- * over the live SalaryColumn.formula.
- * Falls back to live formula if no version exists for that month.
- */
-async function getColumnsForMonth(companyId: string, month: Date) {
-  const monthStart = new Date(Date.UTC(month.getFullYear(), month.getMonth(), 1))
-
-  const [liveColumns, versions] = await Promise.all([
-    db.salaryColumn.findMany({ where: { companyId }, orderBy: { order: "asc" } }),
-    db.salaryColumnVersion.findMany({
-      where: { companyId, effectiveFrom: { lte: monthStart } },
-      orderBy: { effectiveFrom: "desc" },
-    }),
-  ])
-
-  // Latest version per columnKey
-  const latestPerKey = new Map<string, any>()
-  for (const v of versions) {
-    if (!latestPerKey.has(v.columnKey)) latestPerKey.set(v.columnKey, v)
-  }
-
-  // Merge: use version formula if available, else live column formula
-  return liveColumns.map((col: any) => {
-    const v = latestPerKey.get(col.key)
-    if (v) return { ...col, formula: v.formula, name: v.name }
-    return col
-  })
-}
+// getColumnsForMonth moved to src/lib/payroll/columns-loader.ts (Phase 5e).
 
 // ─── Main calculation ─────────────────────────────────────────────────────────
 
