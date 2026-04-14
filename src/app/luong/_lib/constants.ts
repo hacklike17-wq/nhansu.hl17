@@ -20,31 +20,12 @@ export const STATUS_MAP: Record<string, { label: string; cls: string }> =
     Object.entries(PAYROLL_STATUS_META).map(([k, m]) => [k, { label: m.label, cls: m.cls }])
   )
 
-/** Map salary column key → payroll record field */
-export const COL_FIELD: Record<string, string> = {
-  luong_co_ban:      'baseSalary',
-  luong_trach_nhiem: 'responsibilitySalary',
-  tong_luong_co_ban: 'workSalary',
-  cong_so:           'netWorkUnits',
-  gio_tang_ca:       'overtimeHours',
-  tien_tang_ca:      'overtimePay',
-  kpi_chuyen_can:    'kpiChuyenCan',
-  tien_an:           'mealPay',
-  tien_phu_cap:      'tienPhuCap',
-  tien_tru_khac:     'tienPhat',
-  tong_thuc_nhan:    'netSalary',
-}
-
 /**
- * Phase 05: Manual-input columns — editable for DRAFT payrolls.
- * Maps SalaryColumn.key → the SalaryValue columnKey to save.
+ * COL_FIELD + MANUAL_INPUT_MAP moved to src/constants/salary-columns.ts
+ * as the single source of truth (Phase 2 refactor). Re-exported here so
+ * existing `./constants` import paths keep working.
  */
-export const MANUAL_INPUT_MAP: Record<string, string> = {
-  tien_phu_cap:   'tien_phu_cap',
-  thuong:         'thuong',
-  tien_tru_khac:  'tien_tru_khac',
-  kpi_chuyen_can: 'kpi_chuyen_can',
-}
+export { COL_FIELD, MANUAL_INPUT_MAP } from "@/constants/salary-columns"
 
 /** Column display style by key */
 export type ColStyle = 'currency' | 'number' | 'deduction' | 'ot' | 'total'

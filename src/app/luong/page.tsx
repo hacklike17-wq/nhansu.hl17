@@ -13,14 +13,12 @@ import { buildRowVars, renderCell } from './_lib/row-helpers'
 import PersonalSalaryView from '@/components/payroll/PersonalSalaryView'
 import ApprovalHistory from '@/components/payroll/ApprovalHistory'
 import SalaryEntriesModal from '@/components/payroll/SalaryEntriesModal'
-
-// Columns whose edit flow opens the entries breakdown modal instead of an
-// inline single-value input. Kept in sync with ENTRY_ALLOWED_COLUMNS in
-// src/lib/schemas/payroll.ts.
-const ENTRY_COLUMNS: Record<string, string> = {
-  tien_phu_cap: 'Phụ cấp',
-  tien_tru_khac: 'Trừ khác',
-}
+// Phase 2 refactor — column labels for the entries-breakdown modal now
+// live alongside ENTRY_ALLOWED_COLUMNS in the shared constants module.
+// The shared type is narrow (literal union); widen here because the cell
+// render loop iterates all salary columns with generic string keys.
+import { ENTRY_COLUMN_LABELS } from '@/constants/salary-columns'
+const ENTRY_COLUMNS: Record<string, string | undefined> = ENTRY_COLUMN_LABELS
 
 export default function LuongPage() {
   const { user, hasPermission } = useAuth()
@@ -449,7 +447,7 @@ export default function LuongPage() {
                                   )}
                                 </div>
                               ) : canEditCell && ENTRY_COLUMNS[col.key] ? (
-                                <span onClick={() => setEntriesModal({ payrollId: p.id, columnKey: col.key as 'tien_phu_cap' | 'tien_tru_khac', label: ENTRY_COLUMNS[col.key] })}
+                                <span onClick={() => setEntriesModal({ payrollId: p.id, columnKey: col.key as 'tien_phu_cap' | 'tien_tru_khac', label: ENTRY_COLUMNS[col.key] ?? col.key })}
                                   className="cursor-pointer hover:bg-blue-50 hover:text-blue-700 px-1 py-0.5 rounded transition-colors inline-block"
                                   title="Click để xem / sửa chi tiết">
                                   {renderCell(col.key, raw)}

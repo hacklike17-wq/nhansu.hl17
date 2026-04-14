@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { ENTRY_ALLOWED_COLUMNS, type EntryAllowedColumn } from "@/constants/salary-columns"
 
 export const GeneratePayrollSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/, "Định dạng: YYYY-MM"),
@@ -11,12 +12,10 @@ export const UpdatePayrollStatusSchema = z.object({
   note: z.string().optional(),
 })
 
-// Columns that support structured line-item entries (Phase: breakdown
-// panel). Keep this list tight — only columns where a manager would
-// naturally list multiple items (phụ cấp ăn + xăng + điện thoại, or
-// đi muộn + ứng lương) should appear here.
-export const ENTRY_ALLOWED_COLUMNS = ["tien_phu_cap", "tien_tru_khac"] as const
-export type EntryAllowedColumn = (typeof ENTRY_ALLOWED_COLUMNS)[number]
+// Re-export so existing `@/lib/schemas/payroll` import sites keep working.
+// Canonical home is src/constants/salary-columns.ts (Phase 2 refactor).
+export { ENTRY_ALLOWED_COLUMNS }
+export type { EntryAllowedColumn }
 
 export const CreateSalaryValueEntrySchema = z
   .object({
