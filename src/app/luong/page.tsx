@@ -7,12 +7,13 @@ import { useEmployees } from '@/hooks/useEmployees'
 import { useSalaryColumns } from '@/hooks/useSalaryColumns'
 import { useCompanySettings } from '@/hooks/useCompanySettings'
 import { fmtVND } from '@/lib/format'
-import { X, RefreshCw, CheckCircle, Clock, Banknote, Plus, Trash2, Download, AlertTriangle, FileText } from 'lucide-react'
+import { X, RefreshCw, Plus, Trash2, Download, AlertTriangle, FileText } from 'lucide-react'
 import { STATUS_MAP, COL_STYLE, MANUAL_INPUT_MAP } from './_lib/constants'
 import { buildRowVars, renderCell } from './_lib/row-helpers'
 import PersonalSalaryView from '@/components/payroll/PersonalSalaryView'
 import ApprovalHistory from '@/components/payroll/ApprovalHistory'
 import SalaryEntriesModal from '@/components/payroll/SalaryEntriesModal'
+import StatusModal from './_components/StatusModal'
 // Phase 2 refactor — column labels for the entries-breakdown modal now
 // live alongside ENTRY_ALLOWED_COLUMNS in the shared constants module.
 // The shared type is narrow (literal union); widen here because the cell
@@ -523,55 +524,13 @@ export default function LuongPage() {
         </div>
       )}
 
-      {/* ── Status update modal ── */}
+      {/* ── Status update modal (extracted to _components/StatusModal, Phase 7a) ── */}
       {statusModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setStatusModal(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-72 p-5" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">{statusModal.name}</p>
-                <p className="text-xs text-gray-400">Hiện tại: {STATUS_MAP[statusModal.current]?.label}</p>
-              </div>
-              <button onClick={() => setStatusModal(null)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
-            </div>
-            <div className="space-y-2">
-              {statusModal.current === 'DRAFT' && (
-                <button onClick={() => handleStatusChange(statusModal.id, 'PENDING')}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold rounded-xl hover:bg-amber-100">
-                  <Clock size={13} /> Gửi nhân viên xác nhận
-                </button>
-              )}
-              {statusModal.current === 'PENDING' && (
-                <>
-                  <p className="text-[11px] text-gray-500 px-1 mb-1">
-                    Đang chờ nhân viên xác nhận. Chỉ nhân viên được xác nhận hoặc từ chối.
-                  </p>
-                  <button onClick={() => handleStatusChange(statusModal.id, 'DRAFT')}
-                    className="w-full flex items-center gap-2 px-3 py-2.5 bg-gray-50 border border-gray-200 text-gray-600 text-xs font-semibold rounded-xl hover:bg-gray-100">
-                    Huỷ gửi — hoàn về nháp
-                  </button>
-                </>
-              )}
-              {statusModal.current === 'APPROVED' && (
-                <button onClick={() => handleStatusChange(statusModal.id, 'LOCKED')}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 bg-orange-50 border border-orange-200 text-orange-700 text-xs font-semibold rounded-xl hover:bg-orange-100">
-                  🔒 Khoá bảng lương (legacy)
-                </button>
-              )}
-              {statusModal.current === 'LOCKED' && (
-                <button onClick={() => handleStatusChange(statusModal.id, 'PAID')}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold rounded-xl hover:bg-blue-100">
-                  <Banknote size={13} /> Đánh dấu đã trả
-                </button>
-              )}
-              {statusModal.current === 'PAID' && (
-                <p className="text-[11px] text-gray-500 px-1 py-2 text-center">
-                  Đã thanh toán — không còn bước nào.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+        <StatusModal
+          state={statusModal}
+          onClose={() => setStatusModal(null)}
+          onChange={handleStatusChange}
+        />
       )}
       {/* ── Phase 07b: Snapshot viewer modal ── */}
       {snapshotModal && (
