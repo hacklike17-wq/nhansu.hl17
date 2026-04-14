@@ -9,8 +9,9 @@ import { signOut } from 'next-auth/react'
 import {
   LayoutGrid, BarChart2, Users, Calendar, Clock, ArrowRight,
   TrendingUp, DollarSign, ArrowLeftRight, Lock, FileText,
-  Settings, ChevronDown, LogOut, X,
+  Settings, LogOut, X,
 } from 'lucide-react'
+import LunarCalendarCard from './LunarCalendarCard'
 
 const ICON_MAP: Record<string, React.ReactNode> = {
   grid:      <LayoutGrid size={15} />,
@@ -83,17 +84,8 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* Workspace */}
-      <div className="mx-3.5 my-3 bg-gray-50 border border-gray-200 rounded-[10px] px-3 py-2.5 flex items-center gap-2.5 cursor-pointer hover:bg-gray-100 transition-colors">
-        <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
-          <LayoutGrid size={12} className="text-blue-600" />
-        </div>
-        <div>
-          <div className="text-xs font-semibold text-gray-900">Workspace</div>
-          <div className="text-[10px] text-gray-400">04 · 2026</div>
-        </div>
-        <ChevronDown size={12} className="ml-auto text-gray-400" />
-      </div>
+      {/* Lịch dương + âm hôm nay (thay cho Workspace placeholder cũ) */}
+      <LunarCalendarCard />
 
       {/* Navigation */}
       <nav className="flex-1 px-2.5 py-2 overflow-y-auto">
