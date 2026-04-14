@@ -14,6 +14,7 @@ import PersonalSalaryView from '@/components/payroll/PersonalSalaryView'
 import ApprovalHistory from '@/components/payroll/ApprovalHistory'
 import SalaryEntriesModal from '@/components/payroll/SalaryEntriesModal'
 import StatusModal from './_components/StatusModal'
+import SnapshotModal, { type Snapshot } from './_components/SnapshotModal'
 // Phase 2 refactor — column labels for the entries-breakdown modal now
 // live alongside ENTRY_ALLOWED_COLUMNS in the shared constants module.
 // The shared type is narrow (literal union); widen here because the cell
@@ -209,7 +210,7 @@ export default function LuongPage() {
 
   /* ─── Transition status ─── */
   /* ─── Phase 07b: Snapshot modal ─── */
-  const [snapshotModal, setSnapshotModal] = useState<any | null>(null)
+  const [snapshotModal, setSnapshotModal] = useState<Snapshot | null>(null)
   const [historyModal, setHistoryModal] = useState<string | null>(null)
 
   const [statusModal, setStatusModal] = useState<{ id: string; name: string; current: string } | null>(null)
@@ -532,74 +533,12 @@ export default function LuongPage() {
           onChange={handleStatusChange}
         />
       )}
-      {/* ── Phase 07b: Snapshot viewer modal ── */}
+      {/* ── Snapshot viewer modal (extracted to _components/SnapshotModal, Phase 7b) ── */}
       {snapshotModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 md:p-4" onClick={() => setSnapshotModal(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-[480px] max-h-[90vh] md:max-h-[80vh] overflow-y-auto p-4 md:p-5" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900">Snapshot tính lương</h3>
-                {snapshotModal.capturedAt && (
-                  <p className="text-[10px] text-gray-400 mt-0.5">Khóa lúc: {new Date(snapshotModal.capturedAt).toLocaleString('vi-VN')}</p>
-                )}
-              </div>
-              <button onClick={() => setSnapshotModal(null)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
-            </div>
-            {/* Vars */}
-            {snapshotModal.vars && (
-              <div className="mb-4">
-                <h4 className="text-[11px] font-semibold text-gray-500 uppercase mb-1.5">Biến đầu vào</h4>
-                <div className="bg-gray-50 rounded-lg px-3 py-2 space-y-0.5">
-                  {Object.entries(snapshotModal.vars as Record<string, number>).map(([k, v]) => (
-                    <div key={k} className="flex justify-between text-[11px]">
-                      <span className="text-gray-400 font-mono">{k}</span>
-                      <span className="text-gray-700">{(v as number).toLocaleString('vi-VN')}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {/* Formula results */}
-            {snapshotModal.formulaResults?.length > 0 && (
-              <div className="mb-4">
-                <h4 className="text-[11px] font-semibold text-gray-500 uppercase mb-1.5">Kết quả công thức</h4>
-                <div className="space-y-0.5">
-                  {(snapshotModal.formulaResults as any[]).map((f: any) => (
-                    <div key={f.columnKey} className="flex justify-between text-[11px] bg-gray-50 rounded px-2 py-1">
-                      <span className="text-gray-600">{f.columnName}</span>
-                      <span className={f.result === null ? 'text-red-500' : 'font-mono text-gray-800'}>
-                        {f.result === null ? 'LỖI' : fmtVND(f.result as number)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {/* Computed */}
-            {snapshotModal.computed && (
-              <div>
-                <h4 className="text-[11px] font-semibold text-gray-500 uppercase mb-1.5">Kết quả cuối</h4>
-                <div className="bg-blue-50 rounded-lg px-3 py-2 space-y-1">
-                  {[
-                    { label: 'Lương gộp', key: 'grossSalary' },
-                    { label: 'BHXH NV', key: 'bhxhEmployee', deduct: true },
-                    { label: 'BHYT NV', key: 'bhytEmployee', deduct: true },
-                    { label: 'BHTN NV', key: 'bhtnEmployee', deduct: true },
-                    { label: 'Thuế TNCN', key: 'pitTax', deduct: true },
-                    { label: 'Thực nhận', key: 'netSalary', bold: true },
-                  ].map(r => (
-                    <div key={r.key} className={`flex justify-between text-[12px] ${r.bold ? 'border-t border-blue-200 pt-1 font-semibold' : ''}`}>
-                      <span className={r.deduct ? 'text-red-500' : 'text-gray-600'}>{r.label}</span>
-                      <span className={r.bold ? 'text-blue-700' : r.deduct ? 'text-red-600' : 'text-gray-800'}>
-                        {r.deduct ? '-' : ''}{fmtVND(snapshotModal.computed[r.key] ?? 0)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <SnapshotModal
+          snapshot={snapshotModal}
+          onClose={() => setSnapshotModal(null)}
+        />
       )}
 
       {/* ── Entries breakdown modal (tien_phu_cap / tien_tru_khac) ── */}
