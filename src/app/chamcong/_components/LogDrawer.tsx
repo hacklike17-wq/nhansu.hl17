@@ -18,6 +18,7 @@ import {
   isWeekend,
   attCls,
   attLabel,
+  formatUnits,
   KPI_CONFIG,
   DED_TYPE_MAP,
   DED_STATUS,
@@ -308,7 +309,7 @@ export default function LogDrawer({
         <div className="border-t border-gray-200 px-5 py-3 space-y-1.5">
           {(
             [
-              ["Công số nhận", `${(totalUnits as number).toFixed(1)} công`, "text-green-600"],
+              ["Công số nhận", `${formatUnits(totalUnits as number)} công`, "text-green-600"],
               ["Vi phạm KPI", totalViols > 0 ? `${totalViols} lần` : "—", "text-rose-600"],
               [
                 "Điều chỉnh công số (duyệt)",

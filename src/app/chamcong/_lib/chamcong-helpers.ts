@@ -46,11 +46,24 @@ export function attCls(units: number | null): string {
   return "bg-red-50 text-red-500"
 }
 
+/**
+ * Render a units number at up to 2-decimal precision without trailing zeros:
+ *   1      → "1"
+ *   1.5    → "1.5"
+ *   0.75   → "0.75"
+ *   26.25  → "26.25"
+ *
+ * Never rounds the real value — 0.75 stays 0.75, it does NOT become "0.8".
+ */
+export function formatUnits(units: number): string {
+  return Number(units.toFixed(2)).toString()
+}
+
 export function attLabel(units: number | null): string {
   if (units === null) return "·"
   if (units === 1.0) return "1"
   if (units === 0.5) return "½"
-  return units.toFixed(1)
+  return formatUnits(units)
 }
 
 // ─── KPI (Phase 3 của chamcong) ───────────────────────────────────────────────

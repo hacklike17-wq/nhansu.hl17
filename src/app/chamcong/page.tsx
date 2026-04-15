@@ -16,6 +16,7 @@ import {
   toDateStr,
   attCls,
   attLabel,
+  formatUnits,
   KPI_CONFIG,
   KPI_TYPES,
 } from './_lib/chamcong-helpers'
@@ -550,7 +551,7 @@ export default function ChamCongPage() {
                       )}
                       <td className={`${SR} bg-blue-50/40 group-hover:bg-blue-100/50 right-0 px-2 py-1.5 text-right font-bold text-blue-700 whitespace-nowrap`}
                         style={{ right: 0, width: TOT_W }}>
-                        {total.toFixed(1)}
+                        {formatUnits(total)}
                       </td>
                     </tr>
                   )
