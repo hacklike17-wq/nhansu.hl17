@@ -239,6 +239,22 @@ export default function ChamCongPage() {
   /* ══════════════ AUTO-FILL — chấm tự động đến hôm nay (Mon-Sat) ══════════════ */
   async function handleInitMonth() {
     if (!isManager || initializing) return
+    // Confirm before touching the DB — this batch-creates WorkUnit rows for
+    // every active employee × every workday in the month (or month-to-date).
+    // A mis-click can add dozens/hundreds of rows that then have to be cleaned
+    // up one by one, so we gate it behind an explicit yes.
+    const todayYm = new Date().toISOString().slice(0, 7)
+    const isPast = month < todayYm
+    const title = isPast
+      ? `Khởi tạo công cho toàn bộ ngày làm việc của tháng ${month}?`
+      : `Cập nhật công từ đầu tháng ${month} đến hôm nay?`
+    if (!confirm(
+      `${title}\n\n` +
+      `• Tạo 1 công/ngày cho tất cả nhân viên đang làm\n` +
+      `• Bỏ qua Chủ nhật và ngày nghỉ không lương đã duyệt\n` +
+      `• KHÔNG ghi đè ô đã chỉnh tay\n` +
+      `• Bỏ qua nhân viên có bảng lương tháng này đã duyệt/khoá`
+    )) return
     setInitializing(true)
     setInitMsg(null)
     try {
