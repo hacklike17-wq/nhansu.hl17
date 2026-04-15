@@ -18,6 +18,9 @@ import {
   X,
   Clock,
   AlertOctagon,
+  HardDriveDownload,
+  HardDriveUpload,
+  Archive,
 } from 'lucide-react'
 
 type SheetType = 'work-units' | 'overtime' | 'kpi'
@@ -62,6 +65,41 @@ const TYPE_META: Record<SheetType, { label: string; icon: React.ReactNode; color
   kpi: { label: 'KPI vi phạm', icon: <AlertOctagon size={14} />, color: 'rose' },
 }
 
+type BackupScope = 'all' | 'salary-config' | 'hr'
+type RestorePreview = {
+  ok: boolean
+  dryRun?: boolean
+  fileInfo?: {
+    version: string
+    exportedAt: string
+    scope: string
+    fromCompany: string
+    crossCompany: boolean
+  }
+  summary?: Record<string, { count: number; applied: boolean }>
+  warnings?: string[]
+  message?: string
+  error?: string
+}
+
+const BACKUP_META: Record<BackupScope, { label: string; desc: string }> = {
+  all:             { label: 'Toàn bộ hệ thống', desc: 'Công ty, cột lương, thuế/BH, nhân viên, user, phân quyền' },
+  'salary-config': { label: 'Cấu hình lương',   desc: 'Công ty, cài đặt, cột lương + version, PIT, BH' },
+  hr:              { label: 'Nhân sự',           desc: 'Nhân viên, user (không kèm mật khẩu), nhóm quyền' },
+}
+
+const RESTORE_SECTION_LABELS: Record<string, string> = {
+  company:              'Công ty',
+  companySettings:      'Cài đặt công ty',
+  salaryColumns:        'Cột lương',
+  salaryColumnVersions: 'Phiên bản cột lương',
+  pitBrackets:          'Bậc thuế TNCN',
+  insuranceRates:       'Tỷ lệ bảo hiểm',
+  employees:            'Nhân viên',
+  users:                'Tài khoản',
+  permissionGroups:     'Nhóm quyền',
+}
+
 export default function ImportExportTab() {
   const defaultMonth = new Date().toISOString().slice(0, 7)
   const [month, setMonth] = useState(defaultMonth)
@@ -70,6 +108,76 @@ export default function ImportExportTab() {
   const [response, setResponse] = useState<ImportResponse | null>(null)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [enabled, setEnabled] = useState<Set<SheetType>>(new Set())
+
+  // ─── Backup / Restore state ─────────────────────────────────────────────
+  const [restoreAnalyzing, setRestoreAnalyzing] = useState(false)
+  const [restoreCommitting, setRestoreCommitting] = useState(false)
+  const [restorePreview, setRestorePreview] = useState<RestorePreview | null>(null)
+  const [restoreFile, setRestoreFile] = useState<File | null>(null)
+
+  function downloadBackup(scope: BackupScope) {
+    window.location.href = `/api/backup/export?scope=${scope}`
+  }
+
+  async function handleRestoreFileChosen(file: File) {
+    setRestorePreview(null)
+    setRestoreFile(file)
+    setRestoreAnalyzing(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/backup/import', { method: 'POST', body: fd })
+      const data: RestorePreview = await res.json()
+      setRestorePreview(data)
+    } catch (e: any) {
+      setRestorePreview({ ok: false, error: e?.message ?? 'Lỗi kết nối' })
+    } finally {
+      setRestoreAnalyzing(false)
+    }
+  }
+
+  async function confirmRestore() {
+    if (!restoreFile || !restorePreview?.ok || !restorePreview.summary) return
+    const total = Object.values(restorePreview.summary).reduce((s, v) => s + v.count, 0)
+    const sections = Object.entries(restorePreview.summary)
+      .map(([k, v]) => `  • ${RESTORE_SECTION_LABELS[k] ?? k}: ${v.count}`)
+      .join('\n')
+    const crossWarning = restorePreview.fileInfo?.crossCompany
+      ? '\n⚠ File backup này export từ công ty KHÁC. Nếu tiếp tục, dữ liệu sẽ được khôi phục vào công ty hiện tại.\n'
+      : ''
+    if (!window.confirm(
+      `Khôi phục ${total} bản ghi vào DB?\n\n` +
+      sections +
+      `\n\nFile được xuất lúc: ${restorePreview.fileInfo?.exportedAt ?? '—'}` +
+      crossWarning +
+      `\n\nLưu ý:\n` +
+      `• Ghi đè theo key ổn định (email / mã NV / tên cột…)\n` +
+      `• KHÔNG đụng vào dữ liệu tháng (chấm công, lương, audit log…)\n` +
+      `• Không thể undo nếu không có backup khác`
+    )) return
+
+    setRestoreCommitting(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', restoreFile)
+      fd.append('commit', '1')
+      const res = await fetch('/api/backup/import', { method: 'POST', body: fd })
+      const data: RestorePreview = await res.json()
+      setRestorePreview(data)
+      if (data.ok && !data.dryRun) {
+        setRestoreFile(null)
+      }
+    } catch (e: any) {
+      setRestorePreview({ ok: false, error: e?.message ?? 'Lỗi kết nối' })
+    } finally {
+      setRestoreCommitting(false)
+    }
+  }
+
+  function resetRestore() {
+    setRestorePreview(null)
+    setRestoreFile(null)
+  }
 
   function downloadTemplate(kind: SheetType) {
     const path =
@@ -451,6 +559,166 @@ export default function ImportExportTab() {
             )}
           </div>
         )}
+      </div>
+
+      {/* ─── Sao lưu / Khôi phục hệ thống ─────────────────────────────── */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5">
+        <div className="flex items-start gap-3 mb-4 pb-3 border-b border-gray-100">
+          <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+            <Archive size={16} />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-gray-900">Sao lưu / Khôi phục hệ thống</h3>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              Backup dữ liệu setup (công ty, cột lương, nhân viên…) dưới dạng JSON để phòng
+              khi xoá nhầm. KHÔNG bao gồm dữ liệu tháng (chấm công, lương, audit log).
+            </p>
+          </div>
+        </div>
+
+        {/* Xuất */}
+        <div className="mb-5">
+          <div className="text-[11px] font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+            <HardDriveDownload size={12} /> Xuất backup (tải về máy)
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            {(['all', 'salary-config', 'hr'] as BackupScope[]).map(scope => (
+              <button
+                key={scope}
+                onClick={() => downloadBackup(scope)}
+                className="text-left border border-gray-200 rounded-lg p-3 hover:border-purple-300 hover:bg-purple-50/30 transition-colors group"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Download size={12} className="text-purple-600" />
+                  <span className="text-xs font-semibold text-gray-900">{BACKUP_META[scope].label}</span>
+                </div>
+                <div className="text-[10px] text-gray-500 leading-snug">
+                  {BACKUP_META[scope].desc}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Nhập */}
+        <div>
+          <div className="text-[11px] font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+            <HardDriveUpload size={12} /> Khôi phục từ file JSON
+          </div>
+
+          {!restoreFile && !restorePreview && (
+            <label className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold bg-purple-600 text-white rounded-lg cursor-pointer hover:bg-purple-700">
+              <Upload size={13} /> {restoreAnalyzing ? 'Đang phân tích...' : 'Chọn file JSON...'}
+              <input
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                disabled={restoreAnalyzing || restoreCommitting}
+                onChange={e => {
+                  const f = e.target.files?.[0]
+                  if (f) handleRestoreFileChosen(f)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          )}
+
+          {restorePreview && (
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              {restorePreview.ok ? (
+                <>
+                  <div className="px-4 py-3 bg-purple-50 border-b border-purple-200 flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <Check size={13} className="text-purple-600" />
+                      <span className="font-semibold text-purple-900">
+                        {restorePreview.dryRun ? 'Preview sẵn sàng' : 'Đã khôi phục'}
+                      </span>
+                      {restorePreview.fileInfo && (
+                        <span className="text-purple-700">
+                          · {restorePreview.fileInfo.fromCompany} · xuất lúc{' '}
+                          {new Date(restorePreview.fileInfo.exportedAt).toLocaleString('vi-VN')}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={resetRestore}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] border border-gray-200 rounded hover:bg-white"
+                      >
+                        <X size={11} /> Đóng
+                      </button>
+                      {restorePreview.dryRun && (
+                        <button
+                          onClick={confirmRestore}
+                          disabled={restoreCommitting}
+                          className="inline-flex items-center gap-1 px-3 py-1 text-[11px] font-semibold bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-60"
+                        >
+                          {restoreCommitting ? 'Đang khôi phục...' : 'Khôi phục'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-4">
+                    {restorePreview.fileInfo?.crossCompany && (
+                      <div className="mb-3 flex items-start gap-2 px-3 py-2 rounded bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
+                        <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                        <span>
+                          File được xuất từ công ty <b>{restorePreview.fileInfo.fromCompany}</b>.
+                          Dữ liệu sẽ được khôi phục vào công ty hiện tại (companyId được remap).
+                        </span>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {restorePreview.summary &&
+                        Object.entries(restorePreview.summary).map(([k, v]) => (
+                          <div key={k} className="border border-gray-100 rounded px-3 py-2 bg-gray-50/50">
+                            <div className="text-[10px] text-gray-500">
+                              {RESTORE_SECTION_LABELS[k] ?? k}
+                            </div>
+                            <div className="text-sm font-bold text-gray-900">{v.count}</div>
+                          </div>
+                        ))}
+                    </div>
+                    {restorePreview.warnings && restorePreview.warnings.length > 0 && (
+                      <div className="mt-3 border border-amber-200 bg-amber-50 rounded p-2">
+                        <div className="text-[11px] font-semibold text-amber-800 mb-1">
+                          Cảnh báo:
+                        </div>
+                        <ul className="text-[10px] text-amber-700 space-y-0.5">
+                          {restorePreview.warnings.slice(0, 10).map((w, i) => (
+                            <li key={i}>· {w}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {restorePreview.message && !restorePreview.dryRun && (
+                      <div className="mt-3 text-[11px] text-green-700 font-medium">
+                        {restorePreview.message}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="p-4 bg-red-50 border-b border-red-200">
+                  <div className="flex items-start gap-2 text-[11px] text-red-700">
+                    <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-semibold">Không thể phân tích file</div>
+                      <div className="text-red-600 mt-0.5">{restorePreview.error}</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={resetRestore}
+                    className="mt-2 text-[11px] text-red-700 underline"
+                  >
+                    Chọn file khác
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
