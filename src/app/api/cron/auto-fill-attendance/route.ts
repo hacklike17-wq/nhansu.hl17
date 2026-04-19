@@ -191,7 +191,12 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const companies = await db.company.findMany({ select: { id: true } })
+  // Only process companies that have auto-fill explicitly enabled (default true
+  // at schema level, but admins can disable in /caidat > Cấu hình bảng công).
+  const companies = await db.company.findMany({
+    where: { settings: { autoFillCronEnabled: true } },
+    select: { id: true },
+  })
 
   const results: Array<{ companyId: string } & Partial<FillResult> & { error?: string }> = []
   let totalCreated = 0

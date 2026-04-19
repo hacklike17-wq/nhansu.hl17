@@ -190,7 +190,8 @@ model Company {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  settings CompanySettings?
+  settings      CompanySettings?
+  sheetSyncLogs SheetSyncLog[]
 
   @@map("companies")
 }
@@ -206,11 +207,35 @@ model CompanySettings {
   currency           String   @default("VND")
   locale             String   @default("vi-VN")
   enableInsuranceTax Boolean  @default(true)
-  updatedAt          DateTime @updatedAt
+
+  autoFillCronEnabled Boolean @default(true)
+  sheetSyncEnabled    Boolean @default(false)
+  sheetUrl            String?
+  sheetMonth          String?
+
+  updatedAt DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("company_settings")
+}
+
+model SheetSyncLog {
+  id           String   @id @default(cuid())
+  companyId    String
+  month        String
+  sheetUrl     String
+  syncedAt     DateTime @default(now())
+  syncedBy     String
+  status       String
+  durationMs   Int
+  rowsAffected Json
+  errorMessage String?
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, syncedAt(sort: Desc)])
+  @@map("sheet_sync_logs")
 }
 
 // ──────────────────────────────────────────────────────────────
