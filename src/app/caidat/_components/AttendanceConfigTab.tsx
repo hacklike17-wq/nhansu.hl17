@@ -40,21 +40,23 @@ function fmtDateTime(iso: string): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+/**
+ * Pretty-print the "syncedBy" field. Historical logs stored the raw cuid,
+ * new logs store the email, cron runs store "cron". We just shorten the
+ * non-email form so the table doesn't blow up.
+ */
+function fmtSyncedBy(v: string): string {
+  if (v === 'cron') return 'cron'
+  if (v.includes('@')) return v
+  // cuid fallback — show abbreviated with tooltip elsewhere
+  return `user…${v.slice(-6)}`
+}
+
 function currentMonth(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-function monthOptions(): Array<{ value: string; label: string }> {
-  const out: Array<{ value: string; label: string }> = []
-  const now = new Date()
-  for (let offset = -3; offset <= 2; offset++) {
-    const d = new Date(now.getFullYear(), now.getMonth() + offset, 1)
-    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    out.push({ value, label: `Tháng ${d.getMonth() + 1}/${d.getFullYear()}` })
-  }
-  return out
-}
 
 export default function AttendanceConfigTab() {
   const { data: settings, mutate: mutateSettings } = useSWR<Settings>('/api/settings/attendance', fetcher)
@@ -221,15 +223,22 @@ export default function AttendanceConfigTab() {
 
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Tháng áp dụng</label>
-              <select
+              <input
+                type="month"
                 value={sheetMonth}
-                onChange={(e) => { setSheetMonth(e.target.value); markDirty() }}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 min-w-[180px]"
-              >
-                {monthOptions().map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+                onChange={(e) => {
+                  const newMonth = e.target.value
+                  setSheetMonth(newMonth)
+                  // Q12: đổi tháng → xoá link ngay trong UI, buộc admin dán link mới
+                  if (newMonth !== (settings?.sheetMonth ?? currentMonth())) {
+                    setSheetUrl('')
+                  } else {
+                    setSheetUrl(settings?.sheetUrl ?? '')
+                  }
+                  markDirty()
+                }}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 min-w-[200px]"
+              />
               <p className="text-[11px] text-gray-400 mt-1">
                 💡 Đổi tháng sẽ reset link — dán lại link sheet tháng mới
               </p>
@@ -270,7 +279,7 @@ export default function AttendanceConfigTab() {
             ) : (
               <span className="text-red-600 font-medium">✗ lỗi</span>
             )}
-            {' '}bởi <span className="font-medium">{settings.lastSync.syncedBy}</span>
+            {' '}bởi <span className="font-medium" title={settings.lastSync.syncedBy}>{fmtSyncedBy(settings.lastSync.syncedBy)}</span>
           </div>
         )}
       </div>
@@ -302,7 +311,11 @@ export default function AttendanceConfigTab() {
                 <tr key={log.id} className="border-t border-gray-50">
                   <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{fmtDateTime(log.syncedAt)}</td>
                   <td className="px-3 py-2 text-gray-700">{log.month}</td>
-                  <td className="px-3 py-2 text-gray-600">{log.syncedBy === 'cron' ? <span className="text-purple-600 font-medium">cron</span> : log.syncedBy}</td>
+                  <td className="px-3 py-2 text-gray-600" title={log.syncedBy}>
+                    {log.syncedBy === 'cron'
+                      ? <span className="text-purple-600 font-medium">cron</span>
+                      : <span className="truncate inline-block max-w-[200px] align-middle">{fmtSyncedBy(log.syncedBy)}</span>}
+                  </td>
                   <td className="px-3 py-2">
                     {log.status === 'ok' ? (
                       <span className="inline-flex items-center gap-1 text-green-700"><CheckCircle2 size={12}/> ok</span>

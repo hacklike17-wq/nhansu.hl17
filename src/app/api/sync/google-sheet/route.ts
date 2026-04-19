@@ -35,8 +35,13 @@ export async function POST() {
       )
     }
 
-    // Fallback to "unknown" if session has no email field set for some reason.
-    const syncedBy = ctx.userId ?? "admin"
+    // Resolve user email for a human-readable audit trail (falls back to
+    // userId if user has no email for some reason).
+    const user = await db.user.findUnique({
+      where: { id: ctx.userId },
+      select: { email: true },
+    })
+    const syncedBy = user?.email ?? ctx.userId ?? "admin"
 
     try {
       const result = await syncSheetForCompany({
