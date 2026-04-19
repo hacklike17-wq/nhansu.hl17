@@ -1,5 +1,5 @@
 import type {
-  KpiData, Employee, CashflowItem, BudgetItem, Department,
+  Employee, CashflowItem, Department,
   AttendanceRecord, SalaryRecord, LeaveRequest, Recruitment,
   RevenueRecord, ExpenseRecord, DebtRecord, BudgetRecord,
   ReportItem, CompanySettings, SystemConfig, PermissionGroup, SalaryColumn, WorkUnit,
@@ -342,20 +342,6 @@ export const SYSTEM_CONFIG: SystemConfig = {
   showBhColumns: true,
   showPitColumn: true,
 }
-
-/* ═══════════════════════════════════════════════════
-   DASHBOARD MOCK DATA — wiped 2026-04-14
-   ═══════════════════════════════════════════════════
-   The live dashboards now fetch through getDashboardData() from
-   actual Prisma tables. These constants are kept as empty fallbacks
-   for any legacy import path (none should be using them anymore).
-   If a future admin widget needs placeholder shapes, compute them
-   from DB queries instead of re-populating these. */
-export const KPI_DATA: KpiData[] = []
-export const REVENUE_CHART_DATA: Array<{ month: string; revenue: number; expense: number; profit: number }> = []
-export const EMPLOYEE_DATA = EMPLOYEES.slice(0, 5)
-export const BUDGET_DATA: BudgetItem[] = []
-export const DONUT_DATA: Array<{ name: string; value: number; color: string }> = []
 
 export const NAV_SECTIONS = [
   {
