@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
-import { RefreshCw, Save, AlertTriangle, CheckCircle2, XCircle, Loader2, ExternalLink } from 'lucide-react'
+import { RefreshCw, Save, AlertTriangle, CheckCircle2, XCircle, Loader2, ExternalLink, Search } from 'lucide-react'
 
 type Settings = {
   autoFillCronEnabled: boolean
@@ -69,6 +69,12 @@ export default function AttendanceConfigTab() {
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [checkResult, setCheckResult] = useState<{
+    findings: Array<{ tab: string; cell: string; empCode: string | null; rawValue: string; parsedAs: number }>
+    tabsScanned: string[]
+    missingTabs: string[]
+  } | null>(null)
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
@@ -137,6 +143,32 @@ export default function AttendanceConfigTab() {
       setMessage({ kind: 'error', text: (e as Error).message })
     } finally {
       setSyncing(false)
+    }
+  }
+
+  async function handleCheckSheet() {
+    setChecking(true)
+    setMessage(null)
+    setCheckResult(null)
+    try {
+      const res = await fetch('/api/sync/check-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheetUrl: sheetUrl.trim() || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setMessage({ kind: 'error', text: data?.message ?? 'Kiểm tra thất bại' })
+      } else {
+        setCheckResult(data)
+        if (data.findings.length === 0) {
+          setMessage({ kind: 'ok', text: `✅ Sheet sạch — quét ${data.tabsScanned.length} tab, không có ô lỗi` })
+        }
+      }
+    } catch (e) {
+      setMessage({ kind: 'error', text: (e as Error).message })
+    } finally {
+      setChecking(false)
     }
   }
 
@@ -262,6 +294,15 @@ export default function AttendanceConfigTab() {
             Lưu thiết lập
           </button>
           <button
+            onClick={handleCheckSheet}
+            disabled={checking || !sheetUrl.trim()}
+            title="Quét sheet tìm ô text-masquerading-as-number (Excel SUM bỏ qua)"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {checking ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
+            Kiểm tra sheet
+          </button>
+          <button
             onClick={handleSyncNow}
             disabled={syncing || !settings?.sheetSyncEnabled || !settings?.sheetUrl || !settings?.sheetMonth}
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -270,6 +311,52 @@ export default function AttendanceConfigTab() {
             Đồng bộ ngay
           </button>
         </div>
+
+        {checkResult && checkResult.findings.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-2">
+            <div className="flex items-start gap-2 mb-3">
+              <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-xs">
+                <div className="font-semibold text-amber-900">
+                  Phát hiện {checkResult.findings.length} ô text chứa số (Excel SUM bỏ qua → sai Tổng công)
+                </div>
+                <div className="text-amber-700 mt-0.5">
+                  Quét tabs: {checkResult.tabsScanned.join(', ')}
+                  {checkResult.missingTabs.length > 0 && (
+                    <span className="text-gray-500"> · thiếu: {checkResult.missingTabs.join(', ')}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="bg-white border border-amber-200 rounded-md overflow-hidden">
+              <table className="w-full text-[11px]">
+                <thead className="bg-amber-100/50 text-amber-900">
+                  <tr>
+                    <th className="text-left px-2 py-1.5 font-semibold">Tab</th>
+                    <th className="text-left px-2 py-1.5 font-semibold">Ô</th>
+                    <th className="text-left px-2 py-1.5 font-semibold">Mã NV</th>
+                    <th className="text-left px-2 py-1.5 font-semibold">Giá trị text</th>
+                    <th className="text-right px-2 py-1.5 font-semibold">Nên là số</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {checkResult.findings.map((f, i) => (
+                    <tr key={i} className="border-t border-amber-100">
+                      <td className="px-2 py-1.5 text-gray-700">{f.tab}</td>
+                      <td className="px-2 py-1.5 font-mono text-blue-700">{f.cell}</td>
+                      <td className="px-2 py-1.5 font-medium">{f.empCode ?? '-'}</td>
+                      <td className="px-2 py-1.5 font-mono text-red-600">&quot;{f.rawValue}&quot;</td>
+                      <td className="px-2 py-1.5 text-right font-mono text-green-700">{f.parsedAs}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="text-[11px] text-amber-700 mt-2">
+              💡 Fix: trong Google Sheet, click từng ô → Format → Number → Automatic. Hoặc xoá ô rồi gõ lại số (không có dấu nháy ở đầu).
+            </div>
+          </div>
+        )}
 
         {settings?.lastSync && (
           <div className="text-[11px] text-gray-500 pt-1 border-t border-gray-100">
