@@ -1,7 +1,7 @@
 # Code Standards & Conventions
 
 **Project:** ADMIN_HL17 — nhansu.hl17
-**Last Updated:** 2026-04-13
+**Last Updated:** 2026-04-19
 
 ---
 
@@ -677,6 +677,65 @@ This is what caused the "Module not found: Can't resolve 'fs'" build error in Ph
 - **Server-only:** `src/lib/ai/providers/openai.ts` (imports `openai` SDK), `src/lib/ai/tools/*.ts` (import `db`), `src/lib/ai/crypto.ts` (imports Node `crypto`)
 
 When adding new AI utility code, decide which side of the boundary it belongs on before writing the first import. See §16 for the Prisma client cache rule and §17 for the migration drift rule — both also apply to AI Route Handlers.
+
+---
+
+## 20. KPI & WorkUnit Letter-Code Canonical List
+
+The following codes are the canonical set used in the customer's Google Sheet and in the system. Use exactly these strings — spelling and diacritics matter for sheet parsing.
+
+### KPI Violation Codes (`KpiViolationType` in `src/types/index.ts`, `KPI_CONFIG` in `chamcong-helpers.ts`)
+
+| Code | Label |
+|------|-------|
+| `ĐM` | Đi muộn |
+| `NP` | Nghỉ phép |
+| `KL` | Nghỉ không lương |
+| `LT` | Nghỉ lễ tết |
+| `QCC` | Quên chấm công |
+
+Previous codes `DM`, `NS`, `QC` are retired. `NS` was removed entirely; `LT` is new.
+
+### WorkUnit Letter Codes (`WORK_UNIT_CODE_MAP` in `src/lib/data-import.ts`)
+
+| Code | Công value | Label |
+|------|-----------|-------|
+| `ĐM` | 1 | Đi muộn |
+| `NP` | 0 | Nghỉ phép (company rule: nghỉ phép mất công) |
+| `KL` | 0 | Nghỉ không lương |
+| `LT` | 1 | Nghỉ lễ tết |
+| `TS` | 1 | Nghỉ thai sản |
+| `QCC` | 1 | Quên chấm công |
+
+Note: `NP` changed from 1 → 0 công.
+
+---
+
+## 21. source / sourceBy Write-Path Convention
+
+`WorkUnit`, `OvertimeEntry`, and `KpiViolation` rows carry two audit fields:
+
+```prisma
+source   String  @default("UNKNOWN")  // MANUAL | AUTO_FILL | SHEET_SYNC | IMPORT | UNKNOWN
+sourceBy String?                       // user email, or "cron" for automated runs
+```
+
+Every write path must set both fields explicitly:
+
+| Route | source | sourceBy |
+|-------|--------|----------|
+| `POST /api/work-units` | `MANUAL` | session user email |
+| `POST /api/work-units/auto-fill` | `AUTO_FILL` | session user email |
+| `POST /api/cron/auto-fill-attendance` | `AUTO_FILL` | `"cron"` |
+| `POST /api/data/work-units/import` | `IMPORT` | session user email |
+| `POST /api/data/all/import` | `IMPORT` | session user email |
+| `POST /api/sync/google-sheet` | `SHEET_SYNC` | session user email |
+| `POST /api/cron/sync-sheet` | `SHEET_SYNC` | `"cron"` |
+| `POST /api/overtime` | `MANUAL` | session user email |
+| `POST /api/kpi-violations` | `MANUAL` | session user email |
+| `POST /api/leave-requests/[id]/approve` (KPI side-effect) | `MANUAL` | approver email |
+
+Legacy rows (before this deploy) have `source="UNKNOWN"` and `sourceBy=null`.
 
 ---
 

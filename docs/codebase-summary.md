@@ -1,7 +1,7 @@
 # Codebase Summary
 
 **Project:** ADMIN_HL17 — nhansu.hl17
-**Last Updated:** 2026-04-13
+**Last Updated:** 2026-04-19
 **Framework:** Next.js 16.2.3 (App Router, Turbopack) with React 19, TypeScript 5, Prisma 7
 
 ---
@@ -49,8 +49,10 @@ nhansu.hl17/
 │   │   ├── nghiphep/page.tsx       # Leave requests (client, SWR)
 │   │   ├── tuyendung/page.tsx      # Recruitment
 │   │   ├── phanquyen/page.tsx      # Permission groups
-│   │   ├── caidat/page.tsx         # Settings: PITBracket, InsuranceRate, SalaryColumn, AI config
-│   │   │   └── _components/AiConfigTab.tsx  # Admin-only AI config tab: key input, model selector, prompts, cost progress bar
+│   │   ├── caidat/page.tsx         # Settings: PITBracket, InsuranceRate, SalaryColumn, AI config, Cấu hình bảng công
+│   │   │   └── _components/
+│   │   │       ├── AiConfigTab.tsx           # Admin-only AI config tab: key input, model selector, prompts, cost progress bar
+│   │   │       └── AttendanceConfigTab.tsx   # Admin-only attendance config tab: cron toggle + hour, Google Sheet sync toggle + hour + URL + month
 │   │   ├── doi-mat-khau/page.tsx   # Password change
 │   │   └── api/
 │   │       ├── auth/[...nextauth]/route.ts   # Auth.js GET/POST handler
@@ -93,6 +95,15 @@ nhansu.hl17/
 │   │       │   ├── config/route.ts                  # GET (strips key), PATCH — AiConfig upsert (admin)
 │   │       │   ├── test/route.ts                    # POST — test stored config in one click (admin)
 │   │       │   └── usage/route.ts                   # GET — monthly token/cost summary + byUser (admin)
+│   │       ├── settings/
+│   │       │   └── attendance/route.ts        # GET — current attendance settings + lastSync; PATCH — update (validates URL + hour)
+│   │       ├── sync/
+│   │       │   ├── google-sheet/route.ts      # POST — manual "Đồng bộ ngay"; advisory-locked per company (admin only)
+│   │       │   └── check-sheet/route.ts       # POST — "Kiểm tra sheet"; finds text-cells that look like numbers (admin only)
+│   │       ├── cron/
+│   │       │   ├── auto-fill-attendance/route.ts  # POST — Bearer CRON_SECRET; fires hourly, self-filters by autoFillCronHour; skips Sunday
+│   │       │   └── sync-sheet/route.ts        # POST — Bearer CRON_SECRET; fires hourly, self-filters by sheetSyncCronHour; 7 days/week
+│   │       ├── sheet-sync-logs/route.ts       # GET — list recent SheetSyncLog rows (?limit=10)
 │   │       ├── dashboard/
 │   │       │   ├── manager-overview/route.ts  # GET — today's pulse + action queue + month progress
 │   │       │   └── manager-team/route.ts      # GET — per-employee status, công, KPI, payroll status
@@ -123,6 +134,11 @@ nhansu.hl17/
 │   │   ├── useDeductions.ts        # useDeductions()
 │   │   └── useLeaveRequests.ts     # useLeaveRequests()
 │   ├── lib/
+│   │   ├── google-sheet-fetcher.ts # Fetch + validate + parse 3 tabs from xlsx export of Google Sheet
+│   │   ├── data-import.ts          # WORK_UNIT_CODE_MAP — maps letter codes (ĐM, NP, KL, LT, TS, QCC) to công values
+│   │   ├── services/
+│   │   │   ├── sheet-sync.service.ts   # Core Google Sheet sync logic with advisory-lock per company
+│   │   │   └── sheet-check.service.ts  # Sheet QA scan — finds text-cells that look like numbers
 │   │   ├── ai/
 │   │   │   ├── crypto.ts           # AES-256-GCM encrypt/decrypt for stored API keys; requires AI_ENCRYPTION_KEY env var
 │   │   │   ├── providers/
@@ -158,6 +174,9 @@ nhansu.hl17/
 │   └── workflows/                  # Workflow definitions
 ├── docs/                           # Documentation (this directory)
 ├── public/                         # Static assets
+├── scripts/
+│   ├── sync-codes-with-sheet.ts    # Idempotent Employee.code sync — uses email as anchor, runs in transaction
+│   └── check-sheet-text-cells.ts   # CLI wrapper for sheet QA scan (calls sheet-check.service)
 ├── next.config.ts                  # Next.js config (minimal)
 ├── prisma.config.ts                # Prisma config
 ├── tsconfig.json                   # TypeScript config (strict, @/* alias)
@@ -295,7 +314,7 @@ SWR-based client hook for payroll data:
 | `/luong` | Client Component | `usePayroll()`, `useEmployees()` SWR hooks |
 | `/nghiphep` | Client Component | `useLeaveRequests()` SWR → `GET /api/leave-requests` |
 | `/phanquyen` | Client Component | Fetch `GET /api/permission-groups` |
-| `/caidat` | Client Component | Fetch PITBracket, InsuranceRate, SalaryColumn APIs |
+| `/caidat` | Client Component | Fetch PITBracket, InsuranceRate, SalaryColumn, attendance settings APIs |
 | `/doi-mat-khau` | Client Component | Direct API call for password update |
 
 ---
@@ -361,16 +380,16 @@ SWR-based client hook for payroll data:
 | Table | Key Columns |
 |-------|------------|
 | `companies` | `id`, `name`, `taxId` (unique), `address`, `director`, `bankAccount` |
-| `company_settings` | `companyId` (unique), `workHoursPerDay`, `workDaysPerWeek`, `overtimeRate`, `leavePerYear` |
+| `company_settings` | `companyId` (unique), `workHoursPerDay`, `workDaysPerWeek`, `overtimeRate`, `leavePerYear`, `autoFillCronEnabled Boolean @default(true)`, `autoFillCronHour Int @default(18)`, `sheetSyncEnabled Boolean @default(false)`, `sheetSyncCronHour Int @default(19)`, `sheetUrl String?`, `sheetMonth String?` |
 
 ### HR Tables
 
 | Table | Key Columns |
 |-------|------------|
 | `employees` | `id`, `companyId`, `fullName`, `email`, `department`, `position`, `status`, `contractType`, `baseSalary Decimal(15,0)`, `responsibilitySalary Decimal(15,0)`, `deletedAt?` |
-| `work_units` | `id`, `companyId`, `employeeId`, `date @db.Date`, `units Decimal(4,2)` — unique `(employeeId, date)` |
-| `overtime_entries` | `id`, `companyId`, `employeeId`, `date @db.Date`, `hours Decimal(4,2)` |
-| `kpi_violations` | `id`, `companyId`, `employeeId`, `date @db.Date`, `types String[]` |
+| `work_units` | `id`, `companyId`, `employeeId`, `date @db.Date`, `units Decimal(4,2)` — unique `(employeeId, date)`, `source String @default("UNKNOWN")`, `sourceBy String?` |
+| `overtime_entries` | `id`, `companyId`, `employeeId`, `date @db.Date`, `hours Decimal(4,2)`, `source String @default("UNKNOWN")`, `sourceBy String?` |
+| `kpi_violations` | `id`, `companyId`, `employeeId`, `date @db.Date`, `types String[]`, `source String @default("UNKNOWN")`, `sourceBy String?` |
 | `deduction_events` | `id`, `companyId`, `employeeId`, `leaveRequestId?`, `date @db.Date`, `type DeductionType`, `delta Decimal(4,2)`, `status ApprovalStatus` |
 | `leave_requests` | `id`, `companyId`, `employeeId`, `type LeaveType`, `startDate`, `endDate`, `totalDays`, `status ApprovalStatus` |
 
@@ -400,6 +419,12 @@ SWR-based client hook for payroll data:
 | `insurance_rates` | `id`, `companyId`, `type InsuranceType`, `employeeRate Decimal(5,4)`, `employerRate Decimal(5,4)`, `validFrom`, `validTo?` |
 | `permission_groups` | `id`, `companyId`, `name` (unique per company), `label`, `permissions String[]`, `isSystem Boolean` |
 | `audit_logs` | `id`, `companyId`, `entityType`, `entityId`, `action`, `changedBy?`, `changes Json?`, `oldData Json?`, `newData Json?` |
+
+### Attendance Config & Sync Tables
+
+| Table | Key Columns |
+|-------|------------|
+| `sheet_sync_logs` | `id`, `companyId`, `month`, `sheetUrl`, `syncedAt`, `syncedBy` (email or "cron"), `status` ("ok"\|"error"), `durationMs`, `rowsAffected Json`, `errorMessage?` — append-only audit |
 
 ### AI Tables
 

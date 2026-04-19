@@ -1,7 +1,7 @@
 # System Architecture
 
 **Project:** ADMIN_HL17 — nhansu.hl17
-**Last Updated:** 2026-04-13
+**Last Updated:** 2026-04-19
 
 ---
 
@@ -31,7 +31,8 @@ Next.js Node.js Runtime (Route Handlers)
   │                       ├── HR tables: employees, work_units, deduction_events, leave_requests, payrolls
   │                       ├── Payroll config: salary_columns, salary_column_versions, salary_values
   │                       ├── Finance tables: revenue_records, expense_records, budget_records, debt_records
-  │                       └── Config tables: pit_brackets, insurance_rates, permission_groups, audit_logs
+  │                       ├── Config tables: pit_brackets, insurance_rates, permission_groups, audit_logs
+                      └── Sync tables: sheet_sync_logs
   └── src/app/api/export/payroll/route.ts (Excel file response via ExcelJS)
 ```
 
@@ -106,6 +107,12 @@ All routes are file-system based under `src/app/`. Vietnamese route paths reflec
 /api/ai/chat/conversations           → GET — user's 50 most recent conversations
 /api/ai/chat/conversations/[id]      → GET full messages, DELETE (cascade); 404 on ownership mismatch
 /api/ai/usage                        → GET — monthly token/cost summary with byUser breakdown (admin only)
+/api/settings/attendance             → GET — attendance cron + sheet sync settings + lastSync; PATCH — update (admin only)
+/api/sync/google-sheet               → POST — manual "Đồng bộ ngay"; advisory-locked per company (admin only)
+/api/sync/check-sheet                → POST — "Kiểm tra sheet"; QA scan for text-cells-that-look-like-numbers (admin only)
+/api/cron/auto-fill-attendance       → POST (Bearer CRON_SECRET) — hourly; self-filters by autoFillCronHour; skips Sunday
+/api/cron/sync-sheet                 → POST (Bearer CRON_SECRET) — hourly; self-filters by sheetSyncCronHour; 7 days/week
+/api/sheet-sync-logs                 → GET — list recent SheetSyncLog rows (?limit=10)
 ```
 
 ### 3.2 Layout and Shell Layer
@@ -558,7 +565,83 @@ Vercel deployment: `prisma migrate deploy && next build` as build command.
 
 ---
 
-## 11. Architecture Decisions Record
+## 12. Google Sheet Sync Architecture
+
+### Overview
+
+The "Cấu hình bảng công" tab in `/caidat` lets admins connect a Google Sheet export (xlsx) as the source of truth for attendance data. Sync can be triggered manually or run automatically on an hourly cron.
+
+### Sheet Sync Data Flow
+
+```
+Admin configures in /caidat → AttendanceConfigTab
+  └── PATCH /api/settings/attendance
+        ├── validates sheetUrl via HEAD request
+        ├── validates sheetSyncCronHour (0-23)
+        └── upserts CompanySettings (sheetUrl, sheetMonth, sheetSyncEnabled, sheetSyncCronHour)
+
+Manual sync: "Đồng bộ ngay" button
+  └── POST /api/sync/google-sheet (admin only)
+        └── sheet-sync.service.ts
+              ├── pg_try_advisory_lock (hash of companyId) — prevents concurrent runs
+              ├── google-sheet-fetcher.ts — fetch xlsx, parse 3 tabs (WorkUnit, OT, KPI)
+              │     ├── rejects if any day is outside sheetMonth (Q10)
+              │     └── missing tabs produce warnings, not errors (Q11)
+              ├── for each tab: upsert rows (source="SHEET_SYNC", sourceBy=email)
+              │     └── skip rows where WorkUnit.note is non-null (manager annotation wins — Q1)
+              └── SheetSyncLog.create (status, durationMs, rowsAffected, errorMessage)
+
+Cron sync: POST /api/cron/sync-sheet (Bearer CRON_SECRET)
+  └── fires hourly; self-filters: only process companies where sheetSyncCronHour == currentVNHour
+        └── same sheet-sync.service.ts path; sourceBy = "cron"
+```
+
+### Hourly-Cron-With-Filter Pattern
+
+Both cron endpoints (`auto-fill-attendance` and `sync-sheet`) use the same pattern:
+
+1. VPS crontab fires the endpoint every hour (`0 * * * *`)
+2. The endpoint reads `currentVNHour` and filters to only process companies whose configured hour matches
+3. Admins change the schedule via UI — no SSH required
+
+This replaces the old approach where crontab itself encoded the schedule (e.g., `0 18 * * 1-6`).
+
+### Advisory Lock (Concurrency Guard)
+
+`sheet-sync.service.ts` acquires a PostgreSQL advisory lock before syncing:
+
+```sql
+SELECT pg_try_advisory_lock($1, $2)
+```
+
+- First arg: fixed namespace int
+- Second arg: hash of `companyId` to a 32-bit int
+
+If the lock cannot be acquired (another sync is in progress for the same company), the endpoint returns immediately without running. The lock is released when the transaction ends.
+
+### source / sourceBy Audit Trail
+
+Three tables now carry `source` and `sourceBy` fields: `work_units`, `overtime_entries`, `kpi_violations`.
+
+| source value | When set |
+|---|---|
+| `MANUAL` | User creates/edits a record via UI |
+| `AUTO_FILL` | Cron auto-fill or manual auto-fill button |
+| `SHEET_SYNC` | Google Sheet sync (manual or cron) |
+| `IMPORT` | JSON/CSV import via `/api/data/*/import` |
+| `UNKNOWN` | Legacy rows created before this deploy |
+
+`sourceBy` holds the user's email for manual actions, or `"cron"` for automated runs.
+
+All 9 write paths tag `source` and `sourceBy` at the point of insert/upsert.
+
+### Sheet QA Scan
+
+`POST /api/sync/check-sheet` (and the CLI `scripts/check-sheet-text-cells.ts`) calls `sheet-check.service.ts` to identify cells that contain text values but look like numbers. These are common data-entry errors in Google Sheets that would silently produce zero công when parsed.
+
+---
+
+## 13. Architecture Decisions Record
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
@@ -587,3 +670,8 @@ Vercel deployment: `prisma migrate deploy && next build` as build command.
 | Missing attendance filter | Exclude employees with non-DRAFT payroll | chamcong-guard blocks mutations; missing attendance is not actionable for locked employees |
 | Column visibility persistence | `localStorage` keys `nhansu.list-visible-cols`, `nhansu.self-visible-fields` | Hydrated after mount to avoid SSR mismatch; non-sensitive preference data |
 | Prisma schema migration | `prisma db execute` for post-drift changes | `migrations/` directory has 3 files but DB has drifted; `migrate dev` would require destructive reset |
+| Cron schedule | Hourly fire + endpoint self-filter by DB hour | Admin can change schedule via UI without SSH; both auto-fill and sheet-sync use this pattern |
+| Sheet sync concurrency | PostgreSQL advisory lock (2-arg int form) | Prevents parallel runs per company without a separate lock table |
+| Sheet sync conflict rule | Preserve rows with non-null `note` | Manager's manual annotation wins over sheet data |
+| source/sourceBy audit | `String @default("UNKNOWN")` + `String?` on WorkUnit, OvertimeEntry, KpiViolation | Trace every write to its origin (MANUAL/AUTO_FILL/SHEET_SYNC/IMPORT/UNKNOWN) and actor |
+| Employee.code sync | Email as anchor in idempotent script | Swaps codes safely without a unique DB constraint on `code` |

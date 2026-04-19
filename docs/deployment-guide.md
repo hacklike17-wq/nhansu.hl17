@@ -1,7 +1,7 @@
 # Deployment Guide
 
 **Project:** ADMIN_HL17 — nhansu.hl17
-**Last Updated:** 2026-04-13
+**Last Updated:** 2026-04-19
 
 ---
 
@@ -13,7 +13,7 @@
 | `NEXTAUTH_SECRET` | Yes | JWT signing secret — minimum 32 bytes |
 | `NEXTAUTH_URL` | Production only | Full public URL (e.g., `https://nhansu.hl17.com`) |
 | `AI_ENCRYPTION_KEY` | Required for AI | 64 hex chars (32 bytes) — encrypts stored OpenAI API keys at rest |
-| `CRON_SECRET` | Required for attendance cron | 64 hex chars — Bearer token for `POST /api/cron/auto-fill-attendance` |
+| `CRON_SECRET` | Required for cron endpoints | 64 hex chars — Bearer token for `POST /api/cron/auto-fill-attendance` and `POST /api/cron/sync-sheet` |
 
 Generate `NEXTAUTH_SECRET`:
 ```bash
@@ -34,31 +34,84 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ---
 
-## Daily Attendance Cron (VPS setup)
+## Cron Jobs (VPS setup)
 
-The app auto-creates a default `WorkUnit` row (1 công) for each active employee every working day so employees see today's attendance on the dashboard even if a manager hasn't opened `/chamcong`. The endpoint is idempotent — safe to re-run.
+### Hourly-Fire + Endpoint-Self-Filter Pattern
+
+Both cron endpoints now fire every hour and self-filter by the hour configured in the DB for each company. This lets admins change the schedule via `/caidat` without SSH access.
+
+**VPS crontab (as root):**
+```cron
+0 * * * * curl -sfX POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3010/api/cron/auto-fill-attendance >> /var/www/nhansu/logs/cron-autofill.log 2>&1
+0 * * * * curl -sfX POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3010/api/cron/sync-sheet >> /var/www/nhansu/logs/cron-sync.log 2>&1
+```
+
+Logs are written to `/var/www/nhansu/logs/`. Rotate with `logrotate` as needed.
+
+### Auto-Fill Attendance Cron
 
 **Endpoint:** `POST /api/cron/auto-fill-attendance`
 **Auth:** `Authorization: Bearer <CRON_SECRET>`
-**Schedule:** daily at 18:00 Asia/Ho_Chi_Minh, Mon–Sat (the endpoint no-ops on Sunday internally too, so a 7-day schedule is also fine)
+**Schedule:** fires every hour; endpoint processes only companies where `CompanySettings.autoFillCronHour == currentVNHour`
 **Behavior:**
+  - Skips companies with `autoFillCronEnabled = false`
+  - Skips Sunday (6-day work week)
   - Skips employees whose current-month payroll is no longer DRAFT
   - Skips dates already covered by an existing WorkUnit row
   - Creates `units=0` + leave note for employees on APPROVED UNPAID leave
   - Triggers `recalculateMonth()` fire-and-forget so DRAFT payrolls stay in sync
+  - Tags created rows: `source="AUTO_FILL"`, `sourceBy="cron"`
+
+### Google Sheet Sync Cron
+
+**Endpoint:** `POST /api/cron/sync-sheet`
+**Auth:** `Authorization: Bearer <CRON_SECRET>`
+**Schedule:** fires every hour; endpoint processes only companies where `CompanySettings.sheetSyncCronHour == currentVNHour`
+**Behavior:**
+  - Skips companies with `sheetSyncEnabled = false` or no `sheetUrl`/`sheetMonth` configured
+  - Runs 7 days/week (including Sunday)
+  - Acquires PostgreSQL advisory lock per company — skips if another sync is already running
+  - Rejects if any sheet row is outside `sheetMonth`
+  - Skips WorkUnit rows where `note` is non-null (manager annotation wins)
+  - Tags created/updated rows: `source="SHEET_SYNC"`, `sourceBy="cron"`
+  - Appends a row to `sheet_sync_logs` on every run (ok or error)
+
+### Manual Smoke Tests
+
+Auto-fill:
+```bash
+curl -i -X POST http://localhost:3010/api/cron/auto-fill-attendance \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+Expected 200 JSON with `companiesProcessed`, `totalCreated`, `totalSkipped`, and a per-company `results[]` array.
+
+Sheet sync:
+```bash
+curl -i -X POST http://localhost:3010/api/cron/sync-sheet \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+Expected 200 JSON with per-company sync results. A 401 means the header or secret is wrong.
+
+### Legacy Crontab Pattern (superseded)
+
+The old approach encoded the schedule directly in crontab (e.g., `0 18 * * 1-6`). This is no longer used. The new hourly-fire + endpoint-self-filter approach is active.
+
+### Systemd Timer Option
+
+For a more robust setup with automatic retry on failure, use systemd timers. See the section below for the Option A setup (systemd). The timer schedule changes to `OnCalendar=*-*-* *:00:00` (every hour) instead of a fixed time.
 
 ### Option A — Systemd timer (recommended on a real VPS)
 
 Create `/etc/systemd/system/nhansu-autofill.service`:
 ```ini
 [Unit]
-Description=Nhansu daily auto-fill attendance
+Description=Nhansu hourly auto-fill attendance
 
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/curl -sS -X POST \
   -H "Authorization: Bearer ${CRON_SECRET}" \
-  https://your-domain.com/api/cron/auto-fill-attendance
+  http://localhost:3010/api/cron/auto-fill-attendance
 EnvironmentFile=/etc/nhansu-cron.env
 ```
 
@@ -70,10 +123,10 @@ CRON_SECRET=<paste the same value from the app's .env>
 Create `/etc/systemd/system/nhansu-autofill.timer`:
 ```ini
 [Unit]
-Description=Run nhansu auto-fill daily at 18:00 VN
+Description=Run nhansu auto-fill hourly (endpoint self-filters by configured VN hour)
 
 [Timer]
-OnCalendar=Mon..Sat 18:00 Asia/Ho_Chi_Minh
+OnCalendar=*-*-* *:00:00
 Persistent=true
 Unit=nhansu-autofill.service
 
@@ -90,18 +143,12 @@ sudo systemctl list-timers | grep nhansu   # verify next run time
 
 ### Option B — Crontab (simpler if systemd not available)
 
-If the VPS is UTC (11:00 UTC = 18:00 VN):
+Fire every hour on the hour — the endpoint self-filters by the VN hour configured in the DB:
 ```cron
-0 11 * * 1-6 curl -sS -X POST -H "Authorization: Bearer $CRON_SECRET" https://your-domain.com/api/cron/auto-fill-attendance >> /var/log/nhansu-cron.log 2>&1
-```
-
-Put the secret in the crontab user's environment (`crontab -e`):
-```
 CRON_SECRET=<paste the same value>
-0 11 * * 1-6 curl ...
+0 * * * * curl -sfX POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3010/api/cron/auto-fill-attendance >> /var/www/nhansu/logs/cron-autofill.log 2>&1
+0 * * * * curl -sfX POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3010/api/cron/sync-sheet >> /var/www/nhansu/logs/cron-sync.log 2>&1
 ```
-
-If the VPS is in Asia/Ho_Chi_Minh local time, use `0 18 * * 1-6` instead.
 
 ### Option C — Vercel Cron (if deploying on Vercel)
 
@@ -109,19 +156,13 @@ Add to `vercel.json`:
 ```json
 {
   "crons": [
-    { "path": "/api/cron/auto-fill-attendance", "schedule": "0 11 * * 1-6" }
+    { "path": "/api/cron/auto-fill-attendance", "schedule": "0 * * * *" },
+    { "path": "/api/cron/sync-sheet", "schedule": "0 * * * *" }
   ]
 }
 ```
 
-Vercel invokes the endpoint via GET by default — the route uses POST, so either wrap in a thin GET handler or configure the cron as a POST via Vercel's UI. Vercel automatically injects `Authorization: Bearer $CRON_SECRET` if you set `CRON_SECRET` in the Vercel project environment.
-
-### Manual smoke test
-```bash
-curl -i -X POST https://your-domain.com/api/cron/auto-fill-attendance \
-  -H "Authorization: Bearer $CRON_SECRET"
-```
-Expected 200 JSON with `companiesProcessed`, `totalCreated`, `totalSkipped`, and a per-company `results[]` array. A 401 means the header or secret is wrong; a 500 means `CRON_SECRET` env var is unset on the server.
+Vercel invokes the endpoint via GET by default — the routes use POST, so either wrap in thin GET handlers or configure the crons as POST via Vercel's UI. Vercel automatically injects `Authorization: Bearer $CRON_SECRET` if you set `CRON_SECRET` in the Vercel project environment.
 
 For Neon serverless (production), use the pooler connection string for `DATABASE_URL` and optionally set `DATABASE_URL_DIRECT` (non-pooled) for migrations.
 

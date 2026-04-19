@@ -1,7 +1,7 @@
 # Project Roadmap
 
 **Project:** ADMIN_HL17 — nhansu.hl17
-**Last Updated:** 2026-04-13
+**Last Updated:** 2026-04-19
 
 ---
 
@@ -53,6 +53,25 @@ The system migrated from a localStorage-based prototype to a full-stack PostgreS
 | `e914a3b` | Payroll refactor: dropped 4 legacy scalar fields from `payrolls` table (`kpiBonus`, `bonus`, `kpiTrachNhiem`, `otherDeductions`); `PersonalSalaryView` updated; "Phạt" label renamed to "Trừ khác" |
 | `59979d3` | Employee: self-edit branch in `PATCH /api/employees/[id]` with `SELF_EDITABLE_FIELDS` whitelist; manager column picker with localStorage persistence; employee self-profile field picker |
 
+### Google Sheet Sync & Attendance Config (2026-04-19, all shipped)
+
+| Commit | Description |
+|--------|-------------|
+| `d08dda0` | Employee: `Employee.code` re-aligned with customer Google Sheet; idempotent `scripts/sync-codes-with-sheet.ts` using email as anchor |
+| `2c3f738` | Chamcong: KPI & WorkUnit letter-codes aligned with customer sheet (`ĐM / NP / KL / LT / QCC`); `NP` changed to 0 công; `LT` and `TS` added to `WORK_UNIT_CODE_MAP` |
+| `c3a1c13` | Dead code removed: `DonutChart.tsx`, `RevenueChart.tsx`, `EmployeeTable.tsx` (orphan components); 5 empty constant arrays from `constants/data.ts` |
+| `d91b42e` | Cấu hình bảng công: cron toggle + hour config + Google Sheet URL/month config; new `AttendanceConfigTab.tsx`; schema fields added to `CompanySettings`; `GET/PATCH /api/settings/attendance` |
+| `3d1f0f5` | UX polish for Cấu hình bảng công tab; QA script `scripts/check-sheet-text-cells.ts` |
+| `8648055` | "Kiểm tra sheet" button in UI; `POST /api/sync/check-sheet`; `sheet-check.service.ts` |
+| `2114a0a` | Sheet sync cron configurable + advisory-lock per company; `source`/`sourceBy` audit fields on `WorkUnit`, `OvertimeEntry`, `KpiViolation`; new `SheetSyncLog` table; `POST /api/cron/sync-sheet`; auto-fill cron updated to use hourly-filter pattern |
+
+**Key capabilities shipped:**
+- Admin can configure auto-fill cron hour and Google Sheet sync hour/URL/month from `/caidat` without SSH
+- Google Sheet sync: advisory-locked, month-validated, tab-independent, manager-note-preserving
+- `source` + `sourceBy` audit trail on all 3 attendance tables (9 write paths tagged)
+- Sheet QA scan detects text-cells that look like numbers before a sync
+- `SheetSyncLog` table records every sync attempt (manual or cron) with duration, rows affected, and error
+
 ### AI Assistant — Phase 1 + 2.1–2.6 (2026-04-14, all shipped)
 
 | Commit | Phase | Description |
@@ -76,15 +95,18 @@ The system migrated from a localStorage-based prototype to a full-stack PostgreS
 
 ---
 
-## Current State (2026-04-14)
+## Current State (2026-04-19)
 
 **What is fully working:**
 - Authentication (login, JWT sessions, RBAC middleware)
 - Employee management CRUD + soft delete + employee self-edit (personal/bank fields)
-- Attendance: WorkUnit, OvertimeEntry, KpiViolation, DeductionEvent; all three WorkUnit mutation paths trigger DRAFT payroll recalc
+- Attendance: WorkUnit, OvertimeEntry, KpiViolation, DeductionEvent; all three WorkUnit mutation paths trigger DRAFT payroll recalc; `source`/`sourceBy` audit trail on all writes
 - Payroll: full calculation engine + workflow + anomaly detection + Excel export; 3-tier normalized data model (salary_columns → salary_values → payrolls) with DB FK enforcement
 - Leave requests: approval with batch DeductionEvent creation
-- Settings: PITBracket, InsuranceRate, SalaryColumn CRUD, AI config (admin)
+- Settings: PITBracket, InsuranceRate, SalaryColumn CRUD, AI config, Cấu hình bảng công (admin)
+- Google Sheet sync: admin-configurable URL + month; advisory-locked per company; manager-note-preserving conflict rule; `SheetSyncLog` audit table; manual + cron modes
+- Configurable cron: auto-fill hour and sheet sync hour settable via UI (hourly-fire + endpoint-self-filter pattern)
+- Sheet QA scan: "Kiểm tra sheet" button + `POST /api/sync/check-sheet` finds text-cells-that-look-like-numbers before syncing
 - Permission groups: CRUD + system group protection
 - Formula versioning with historical recalculation
 - Manager dashboard: live team status table + action queue from DB (no static data)
