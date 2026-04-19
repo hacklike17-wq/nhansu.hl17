@@ -209,6 +209,13 @@ export async function POST(req: NextRequest) {
     // to match each table's unique-key situation.
     const affectedEmpIds = new Set<string>()
 
+    // Resolve user email for audit trail (source=IMPORT + sourceBy=email).
+    const importUser = await db.user.findUnique({
+      where: { id: ctx.userId },
+      select: { email: true },
+    })
+    const importSourceBy = importUser?.email ?? ctx.userId
+
     await db.$transaction(async tx => {
       for (const plan of plans) {
         if (enabled && !enabled.has(plan.sheetType)) continue
@@ -230,8 +237,10 @@ export async function POST(req: NextRequest) {
                 date: u.date,
                 units: u.units,
                 note: u.note,
+                source: "IMPORT",
+                sourceBy: importSourceBy,
               },
-              update: { units: u.units, note: u.note },
+              update: { units: u.units, note: u.note, source: "IMPORT", sourceBy: importSourceBy },
             })
             affectedEmpIds.add(u.employeeId)
           }
@@ -256,6 +265,8 @@ export async function POST(req: NextRequest) {
                   date: u.date,
                   hours: u.hours,
                   note: u.note,
+                  source: "IMPORT",
+                  sourceBy: importSourceBy,
                 })),
               })
             }
@@ -280,6 +291,8 @@ export async function POST(req: NextRequest) {
                   date: u.date,
                   types: u.types,
                   note: u.note,
+                  source: "IMPORT",
+                  sourceBy: importSourceBy,
                 })),
               })
             }

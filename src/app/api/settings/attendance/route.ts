@@ -21,9 +21,15 @@ import {
 
 type PatchBody = {
   autoFillCronEnabled?: boolean
+  autoFillCronHour?: number
   sheetSyncEnabled?: boolean
+  sheetSyncCronHour?: number
   sheetUrl?: string | null
   sheetMonth?: string | null
+}
+
+function isValidHour(n: unknown): n is number {
+  return typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 23
 }
 
 const MONTH_RE = /^\d{4}-\d{2}$/
@@ -37,7 +43,9 @@ export async function GET() {
       where: { companyId: ctx.companyId },
       select: {
         autoFillCronEnabled: true,
+        autoFillCronHour: true,
         sheetSyncEnabled: true,
+        sheetSyncCronHour: true,
         sheetUrl: true,
         sheetMonth: true,
       },
@@ -50,7 +58,9 @@ export async function GET() {
 
     return NextResponse.json({
       autoFillCronEnabled: settings?.autoFillCronEnabled ?? true,
+      autoFillCronHour: settings?.autoFillCronHour ?? 18,
       sheetSyncEnabled: settings?.sheetSyncEnabled ?? false,
+      sheetSyncCronHour: settings?.sheetSyncCronHour ?? 19,
       sheetUrl: settings?.sheetUrl ?? null,
       sheetMonth: settings?.sheetMonth ?? null,
       lastSync: lastSync
@@ -86,8 +96,26 @@ export async function PATCH(req: NextRequest) {
     if (typeof body.autoFillCronEnabled === "boolean") {
       data.autoFillCronEnabled = body.autoFillCronEnabled
     }
+    if (body.autoFillCronHour !== undefined) {
+      if (!isValidHour(body.autoFillCronHour)) {
+        return NextResponse.json(
+          { error: "INVALID_HOUR", message: "Giờ phải là số nguyên từ 0 đến 23" },
+          { status: 400 }
+        )
+      }
+      data.autoFillCronHour = body.autoFillCronHour
+    }
     if (typeof body.sheetSyncEnabled === "boolean") {
       data.sheetSyncEnabled = body.sheetSyncEnabled
+    }
+    if (body.sheetSyncCronHour !== undefined) {
+      if (!isValidHour(body.sheetSyncCronHour)) {
+        return NextResponse.json(
+          { error: "INVALID_HOUR", message: "Giờ phải là số nguyên từ 0 đến 23" },
+          { status: 400 }
+        )
+      }
+      data.sheetSyncCronHour = body.sheetSyncCronHour
     }
 
     // --- Normalize + validate sheetMonth ---
@@ -161,7 +189,9 @@ export async function PATCH(req: NextRequest) {
       where: { companyId: ctx.companyId },
       select: {
         autoFillCronEnabled: true,
+        autoFillCronHour: true,
         sheetSyncEnabled: true,
+        sheetSyncCronHour: true,
         sheetUrl: true,
         sheetMonth: true,
       },

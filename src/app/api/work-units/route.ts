@@ -128,10 +128,16 @@ export async function POST(req: NextRequest) {
       select: { id: true, units: true, note: true },
     })
 
+    const user = await db.user.findUnique({
+      where: { id: ctx.userId },
+      select: { email: true },
+    })
+    const sourceBy = user?.email ?? ctx.userId
+
     const record = await db.workUnit.upsert({
       where: { employeeId_date: { employeeId, date: dateObj } },
-      create: { companyId, employeeId, date: dateObj, units, note },
-      update: { units, note },
+      create: { companyId, employeeId, date: dateObj, units, note, source: "MANUAL", sourceBy },
+      update: { units, note, source: "MANUAL", sourceBy },
     })
 
     // Audit: who changed the cell, when, from what to what

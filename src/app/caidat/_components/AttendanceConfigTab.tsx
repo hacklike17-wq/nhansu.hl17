@@ -5,7 +5,9 @@ import { RefreshCw, Save, AlertTriangle, CheckCircle2, XCircle, Loader2, Externa
 
 type Settings = {
   autoFillCronEnabled: boolean
+  autoFillCronHour: number
   sheetSyncEnabled: boolean
+  sheetSyncCronHour: number
   sheetUrl: string | null
   sheetMonth: string | null
   lastSync: {
@@ -63,7 +65,9 @@ export default function AttendanceConfigTab() {
   const { data: logsData, mutate: mutateLogs } = useSWR<{ rows: LogRow[] }>('/api/sheet-sync-logs?limit=10', fetcher)
 
   const [autoFillEnabled, setAutoFillEnabled] = useState(true)
+  const [autoFillHour, setAutoFillHour] = useState(18)
   const [syncEnabled, setSyncEnabled] = useState(false)
+  const [syncHour, setSyncHour] = useState(19)
   const [sheetUrl, setSheetUrl] = useState('')
   const [sheetMonth, setSheetMonth] = useState(currentMonth())
   const [dirty, setDirty] = useState(false)
@@ -80,7 +84,9 @@ export default function AttendanceConfigTab() {
   useEffect(() => {
     if (!settings) return
     setAutoFillEnabled(settings.autoFillCronEnabled)
+    setAutoFillHour(settings.autoFillCronHour)
     setSyncEnabled(settings.sheetSyncEnabled)
+    setSyncHour(settings.sheetSyncCronHour)
     setSheetUrl(settings.sheetUrl ?? '')
     setSheetMonth(settings.sheetMonth ?? currentMonth())
     setDirty(false)
@@ -97,7 +103,9 @@ export default function AttendanceConfigTab() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           autoFillCronEnabled: autoFillEnabled,
+          autoFillCronHour: autoFillHour,
           sheetSyncEnabled: syncEnabled,
+          sheetSyncCronHour: syncHour,
           sheetUrl: sheetUrl.trim() || null,
           sheetMonth: sheetMonth || null,
         }),
@@ -195,10 +203,10 @@ export default function AttendanceConfigTab() {
       )}
 
       {/* Auto-fill cron section */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5">
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
-            <h3 className="text-sm font-semibold text-gray-900">Auto-fill cron 18h</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Auto-fill cron</h3>
             <p className="text-xs text-gray-500 mt-1 leading-relaxed">
               Cron tự động điền 1 công cho các NV chưa chấm hôm nay (trừ Chủ nhật, NV đã nghỉ phép approved,
               và NV có payroll đã đóng sổ).
@@ -214,6 +222,22 @@ export default function AttendanceConfigTab() {
             <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${autoFillEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
           </button>
         </div>
+
+        <div className={autoFillEnabled ? '' : 'opacity-50 pointer-events-none'}>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Giờ chạy (VN)</label>
+          <select
+            value={autoFillHour}
+            onChange={(e) => { setAutoFillHour(Number(e.target.value)); markDirty() }}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 min-w-[120px]"
+          >
+            {Array.from({ length: 24 }, (_, h) => (
+              <option key={h} value={h}>{String(h).padStart(2, '0')}h</option>
+            ))}
+          </select>
+          <p className="text-[11px] text-gray-400 mt-1">
+            💡 Chạy 1 lần mỗi ngày (Thứ 2 → Thứ 7, bỏ qua Chủ nhật)
+          </p>
+        </div>
       </div>
 
       {/* Sheet sync section */}
@@ -223,7 +247,7 @@ export default function AttendanceConfigTab() {
             <h3 className="text-sm font-semibold text-gray-900">Đồng bộ Google Sheet</h3>
             <p className="text-xs text-gray-500 mt-1 leading-relaxed">
               Kéo dữ liệu chấm công / tăng ca / KPI từ Google Sheet vào hệ thống.
-              Cron chạy 19:00 mỗi ngày (trừ Chủ nhật). Mỗi tháng cần update link mới.
+              Chạy 7 ngày/tuần (kể cả Chủ nhật). Mỗi tháng cần update link mới.
             </p>
           </div>
           <button
@@ -253,27 +277,45 @@ export default function AttendanceConfigTab() {
               </p>
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Tháng áp dụng</label>
-              <input
-                type="month"
-                value={sheetMonth}
-                onChange={(e) => {
-                  const newMonth = e.target.value
-                  setSheetMonth(newMonth)
-                  // Q12: đổi tháng → xoá link ngay trong UI, buộc admin dán link mới
-                  if (newMonth !== (settings?.sheetMonth ?? currentMonth())) {
-                    setSheetUrl('')
-                  } else {
-                    setSheetUrl(settings?.sheetUrl ?? '')
-                  }
-                  markDirty()
-                }}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 min-w-[200px]"
-              />
-              <p className="text-[11px] text-gray-400 mt-1">
-                💡 Đổi tháng sẽ reset link — dán lại link sheet tháng mới
-              </p>
+            <div className="flex flex-wrap gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Tháng áp dụng</label>
+                <input
+                  type="month"
+                  value={sheetMonth}
+                  onChange={(e) => {
+                    const newMonth = e.target.value
+                    setSheetMonth(newMonth)
+                    // Q12: đổi tháng → xoá link ngay trong UI, buộc admin dán link mới
+                    if (newMonth !== (settings?.sheetMonth ?? currentMonth())) {
+                      setSheetUrl('')
+                    } else {
+                      setSheetUrl(settings?.sheetUrl ?? '')
+                    }
+                    markDirty()
+                  }}
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 min-w-[200px]"
+                />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  💡 Đổi tháng sẽ reset link
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Giờ chạy (VN)</label>
+                <select
+                  value={syncHour}
+                  onChange={(e) => { setSyncHour(Number(e.target.value)); markDirty() }}
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 min-w-[120px]"
+                >
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <option key={h} value={h}>{String(h).padStart(2, '0')}h</option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-gray-400 mt-1">
+                  💡 7 ngày/tuần
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -411,9 +453,27 @@ export default function AttendanceConfigTab() {
                     )}
                   </td>
                   <td className="px-3 py-2 text-gray-600 text-[11px]">
-                    {log.status === 'ok'
-                      ? `WU ${log.rowsAffected?.workUnit ?? 0} · OT ${log.rowsAffected?.overtime ?? 0} · KPI ${log.rowsAffected?.kpi ?? 0}`
-                      : <span className="text-red-600 truncate max-w-[280px] inline-block">{log.errorMessage ?? '—'}</span>}
+                    {log.status === 'ok' ? (
+                      <span>
+                        WU {log.rowsAffected?.workUnit ?? 0}
+                        {(log.rowsAffected?.preservedNotes ?? 0) > 0 && (
+                          <span
+                            className="text-amber-600"
+                            title="Số ô đã có note của manager — Q1 rule giữ nguyên, không đè"
+                          > (giữ {log.rowsAffected!.preservedNotes})</span>
+                        )}
+                        {' · '}OT {log.rowsAffected?.overtime ?? 0}
+                        {' · '}KPI {log.rowsAffected?.kpi ?? 0}
+                        {(log.rowsAffected?.skippedEmps ?? 0) > 0 && (
+                          <span
+                            className="text-gray-400"
+                            title="Số NV trong sheet không tồn tại trong DB"
+                          > · skip {log.rowsAffected!.skippedEmps}</span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-red-600 truncate max-w-[280px] inline-block">{log.errorMessage ?? '—'}</span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right text-gray-400 text-[10px]">{Math.round(log.durationMs / 100) / 10}s</td>
                 </tr>

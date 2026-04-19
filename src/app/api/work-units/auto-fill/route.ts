@@ -172,12 +172,21 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Build rows to insert ──────────────────────────────────────
+    // Resolve user email for audit trail
+    const user = await db.user.findUnique({
+      where: { id: ctx.userId },
+      select: { email: true },
+    })
+    const sourceBy = user?.email ?? ctx.userId
+
     type Row = {
       companyId: string
       employeeId: string
       date: Date
       units: number
       note: string | null
+      source: string
+      sourceBy: string
     }
     const rowsToCreate: Row[] = []
     let skippedExisting = 0
@@ -218,6 +227,8 @@ export async function POST(req: NextRequest) {
             date: day,
             units: 0,
             note: `Nghỉ không lương — đơn ${leaveId.slice(0, 8)}`,
+            source: "AUTO_FILL",
+            sourceBy,
           })
           skippedLeave++
           continue
@@ -230,6 +241,8 @@ export async function POST(req: NextRequest) {
           date: day,
           units: 1,
           note: null,
+          source: "AUTO_FILL",
+          sourceBy,
         })
       }
     }

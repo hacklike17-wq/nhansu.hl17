@@ -188,6 +188,9 @@ export default function ChamCongPage() {
     date: string
     initialVal: number
     initialNote: string
+    initialSource: string | null
+    initialSourceBy: string | null
+    initialUpdatedAt: string | null
   }
   const [attEdit, setAttEdit] = useState<AttEdit | null>(null)
   const [saving, setSaving] = useState(false)
@@ -202,6 +205,9 @@ export default function ChamCongPage() {
       date,
       initialVal: existing?.units ?? 1.0,
       initialNote: existing?.note ?? '',
+      initialSource: existing?.source ?? null,
+      initialSourceBy: existing?.sourceBy ?? null,
+      initialUpdatedAt: existing?.updatedAt ?? existing?.createdAt ?? null,
     })
   }
   async function saveAtt(val: number, note: string) {
@@ -771,6 +777,9 @@ export default function ChamCongPage() {
           date={attEdit.date}
           initialVal={attEdit.initialVal}
           initialNote={attEdit.initialNote}
+          initialSource={attEdit.initialSource}
+          initialSourceBy={attEdit.initialSourceBy}
+          initialUpdatedAt={attEdit.initialUpdatedAt}
           saving={saving}
           saveError={saveError}
           onClose={() => { setAttEdit(null); setSaveError(null) }}

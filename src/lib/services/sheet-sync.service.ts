@@ -216,8 +216,10 @@ export async function syncSheetForCompany(params: {
             date: row.date,
             units: row.units,
             note: row.note,
+            source: "SHEET_SYNC",
+            sourceBy: syncedBy,
           },
-          update: { units: row.units, note: row.note },
+          update: { units: row.units, note: row.note, source: "SHEET_SYNC", sourceBy: syncedBy },
         })
         rowsAffected.workUnit++
       }
@@ -256,7 +258,7 @@ export async function syncSheetForCompany(params: {
         if (existing) {
           await db.overtimeEntry.update({
             where: { id: existing.id },
-            data: { hours: row.hours, note: row.note },
+            data: { hours: row.hours, note: row.note, source: "SHEET_SYNC", sourceBy: syncedBy },
           })
         } else {
           await db.overtimeEntry.create({
@@ -266,6 +268,8 @@ export async function syncSheetForCompany(params: {
               date: row.date,
               hours: row.hours,
               note: row.note,
+              source: "SHEET_SYNC",
+              sourceBy: syncedBy,
             },
           })
         }
@@ -299,7 +303,7 @@ export async function syncSheetForCompany(params: {
         if (existing) {
           await db.kpiViolation.update({
             where: { id: existing.id },
-            data: { types: row.types, note: row.note },
+            data: { types: row.types, note: row.note, source: "SHEET_SYNC", sourceBy: syncedBy },
           })
         } else {
           await db.kpiViolation.create({
@@ -309,6 +313,8 @@ export async function syncSheetForCompany(params: {
               date: row.date,
               types: row.types,
               note: row.note,
+              source: "SHEET_SYNC",
+              sourceBy: syncedBy,
             },
           })
         }

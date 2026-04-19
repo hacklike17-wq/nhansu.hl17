@@ -250,6 +250,13 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // Resolve user email for audit trail
+    const user = await db.user.findUnique({
+      where: { id: ctx.userId },
+      select: { email: true },
+    })
+    const sourceBy = user?.email ?? ctx.userId
+
     // Commit: upsert all rows in a single transaction. Fire-and-forget the
     // payroll recalc loop after commit — payroll is DRAFT by precondition
     // (lockedEmployeeIds filter above) so this is safe.
@@ -263,10 +270,14 @@ export async function POST(req: NextRequest) {
             date: u.date,
             units: u.units,
             note: u.note,
+            source: "IMPORT",
+            sourceBy,
           },
           update: {
             units: u.units,
             note: u.note,
+            source: "IMPORT",
+            sourceBy,
           },
         })
       }

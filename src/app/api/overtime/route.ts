@@ -93,15 +93,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, deleted: true })
     }
 
+    const user = await db.user.findUnique({
+      where: { id: ctx.userId },
+      select: { email: true },
+    })
+    const sourceBy = user?.email ?? ctx.userId
+
     let entry
     if (existingBefore) {
       entry = await db.overtimeEntry.update({
         where: { id: existingBefore.id },
-        data: { hours, note: note ?? null },
+        data: { hours, note: note ?? null, source: "MANUAL", sourceBy },
       })
     } else {
       entry = await db.overtimeEntry.create({
-        data: { companyId, employeeId, date: dateObj, hours, note: note ?? null },
+        data: { companyId, employeeId, date: dateObj, hours, note: note ?? null, source: "MANUAL", sourceBy },
       })
     }
 

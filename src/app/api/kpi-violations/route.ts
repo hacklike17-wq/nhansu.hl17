@@ -99,8 +99,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ deleted: true })
     }
 
+    const user = await db.user.findUnique({
+      where: { id: ctx.userId },
+      select: { email: true },
+    })
+    const sourceBy = user?.email ?? ctx.userId
+
     const record = await db.kpiViolation.create({
-      data: { companyId, employeeId, date: dateObj, types, note },
+      data: { companyId, employeeId, date: dateObj, types, note, source: "MANUAL", sourceBy },
     })
 
     db.auditLog.create({

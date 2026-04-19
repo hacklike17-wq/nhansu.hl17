@@ -6,13 +6,11 @@ import { SheetFetchError } from "@/lib/google-sheet-fetcher"
 /**
  * POST /api/cron/sync-sheet
  *
- * Daily cron trigger (scheduler should fire ~19:00 VN time, after the
- * attendance auto-fill cron at 18:00). Pulls the Google Sheet for every
- * company that has sheetSyncEnabled=true AND a sheetUrl+sheetMonth set.
+ * Hourly cron trigger. VPS crontab fire mỗi giờ (`0 * * * *`); endpoint
+ * tự lọc theo `sheetSyncCronHour` đã cấu hình để chỉ chạy đúng giờ admin
+ * mong muốn. Chạy 7 ngày/tuần (kể cả Chủ nhật) — khác auto-fill.
  *
  * Auth: Bearer CRON_SECRET (reuses the same env var as auto-fill cron).
- *
- * The endpoint no-ops on Sunday to match the company's 6-day work week.
  */
 export async function POST(req: NextRequest) {
   const expected = process.env.CRON_SECRET
@@ -32,22 +30,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  // --- Skip Sunday (VN time) ---
+  // --- VN hour (dùng để lọc công ty theo sheetSyncCronHour) ---
   const VN_OFFSET_MS = 7 * 60 * 60 * 1000
   const nowVN = new Date(Date.now() + VN_OFFSET_MS)
-  if (nowVN.getUTCDay() === 0) {
-    return NextResponse.json({ ok: true, skipped: "sunday" })
-  }
+  const hourVN = nowVN.getUTCHours()
 
-  // --- Find all companies with sync enabled + configured ---
+  // --- Find all companies with sync enabled + configured + đúng giờ VN ---
   const companies = await db.companySettings.findMany({
     where: {
       sheetSyncEnabled: true,
+      sheetSyncCronHour: hourVN,
       sheetUrl: { not: null },
       sheetMonth: { not: null },
     },
     select: { companyId: true, sheetUrl: true, sheetMonth: true },
   })
+
+  if (companies.length === 0) {
+    return NextResponse.json({
+      ok: true,
+      hourVN,
+      skipped: "no-matching-hour",
+      message: `Không có công ty nào cấu hình sync lúc ${hourVN}h`,
+    })
+  }
 
   const results: Array<{
     companyId: string

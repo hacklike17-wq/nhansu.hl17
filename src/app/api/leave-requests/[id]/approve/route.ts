@@ -107,6 +107,12 @@ export async function POST(
           })
         }
 
+        const approver = await tx.user.findUnique({
+          where: { id: ctx.userId },
+          select: { email: true },
+        })
+        const sourceBy = approver?.email ?? ctx.userId
+
         for (const day of workdayDates) {
           const key = day.toISOString().slice(0, 10)
           const existing = existingMap.get(key)
@@ -114,7 +120,7 @@ export async function POST(
             if (!existing.types.includes(kpiCode)) {
               await tx.kpiViolation.update({
                 where: { id: existing.id },
-                data: { types: [...existing.types, kpiCode] },
+                data: { types: [...existing.types, kpiCode], source: "MANUAL", sourceBy },
               })
             }
           } else {
@@ -125,6 +131,8 @@ export async function POST(
                 date: day,
                 types: [kpiCode],
                 note: `Tự động từ đơn ${leaveRequest.type === "UNPAID" ? "nghỉ không lương" : "nghỉ phép"} ${id.slice(0, 8)}`,
+                source: "MANUAL",
+                sourceBy,
               },
             })
           }

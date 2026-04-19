@@ -209,7 +209,9 @@ model CompanySettings {
   enableInsuranceTax Boolean  @default(true)
 
   autoFillCronEnabled Boolean @default(true)
+  autoFillCronHour    Int     @default(18)
   sheetSyncEnabled    Boolean @default(false)
+  sheetSyncCronHour   Int     @default(19)
   sheetUrl            String?
   sheetMonth          String?
 
@@ -296,6 +298,8 @@ model WorkUnit {
   date       DateTime @db.Date
   units      Decimal  @db.Decimal(4, 2) @default(1.0)
   note       String?
+  source     String   @default("UNKNOWN")
+  sourceBy   String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -359,6 +363,8 @@ model OvertimeEntry {
   date       DateTime @db.Date
   hours      Decimal  @db.Decimal(4, 2)
   note       String?
+  source     String   @default("UNKNOWN")
+  sourceBy   String?
   createdAt  DateTime @default(now())
 
   employee Employee @relation(fields: [employeeId], references: [id])
@@ -374,6 +380,8 @@ model KpiViolation {
   date       DateTime @db.Date
   types      String[]
   note       String?
+  source     String   @default("UNKNOWN")
+  sourceBy   String?
   createdAt  DateTime @default(now())
 
   employee Employee @relation(fields: [employeeId], references: [id])

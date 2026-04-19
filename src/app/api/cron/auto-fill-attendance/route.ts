@@ -93,6 +93,8 @@ async function fillOneCompanyForToday(
     date: Date
     units: number
     note: string | null
+    source: string
+    sourceBy: string
   }> = []
 
   for (const emp of employees) {
@@ -113,6 +115,8 @@ async function fillOneCompanyForToday(
         date: todayUTC,
         units: 0,
         note: `Nghỉ không lương — đơn ${leaveId.slice(0, 8)}`,
+        source: "AUTO_FILL",
+        sourceBy: "cron",
       })
       result.skippedLeave++
       continue
@@ -123,7 +127,9 @@ async function fillOneCompanyForToday(
       employeeId: emp.id,
       date: todayUTC,
       units: 1,
-      note: "Auto-fill cron 18h",
+      note: null,
+      source: "AUTO_FILL",
+      sourceBy: "cron",
     })
   }
 
@@ -178,6 +184,7 @@ export async function POST(req: NextRequest) {
   const m = nowVN.getUTCMonth()
   const d = nowVN.getUTCDate()
   const dow = nowVN.getUTCDay()
+  const hourVN = nowVN.getUTCHours()
   const todayUTC = new Date(Date.UTC(y, m, d))
   const monthStart = new Date(Date.UTC(y, m, 1))
   const todayLabel = todayUTC.toISOString().slice(0, 10)
@@ -191,12 +198,27 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // Only process companies that have auto-fill explicitly enabled (default true
-  // at schema level, but admins can disable in /caidat > Cấu hình bảng công).
+  // Chỉ xử lý các công ty có auto-fill bật + đúng giờ VN đã cấu hình.
+  // VPS crontab fire mỗi giờ; endpoint tự lọc theo autoFillCronHour.
   const companies = await db.company.findMany({
-    where: { settings: { autoFillCronEnabled: true } },
+    where: {
+      settings: {
+        autoFillCronEnabled: true,
+        autoFillCronHour: hourVN,
+      },
+    },
     select: { id: true },
   })
+
+  if (companies.length === 0) {
+    return NextResponse.json({
+      ok: true,
+      date: todayLabel,
+      hourVN,
+      skipped: "no-matching-hour",
+      message: `Không có công ty nào cấu hình chạy lúc ${hourVN}h`,
+    })
+  }
 
   const results: Array<{ companyId: string } & Partial<FillResult> & { error?: string }> = []
   let totalCreated = 0

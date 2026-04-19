@@ -23,10 +23,34 @@ type Props = {
   date: string
   initialVal: number
   initialNote: string
+  initialSource?: string | null
+  initialSourceBy?: string | null
+  initialUpdatedAt?: string | null
   saving: boolean
   saveError: string | null
   onClose: () => void
   onSave: (val: number, note: string) => void | Promise<void>
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  MANUAL: "Sửa tay",
+  AUTO_FILL: "Auto-fill",
+  SHEET_SYNC: "Đồng bộ Sheet",
+  IMPORT: "Import Excel",
+  UNKNOWN: "Không rõ",
+}
+
+const SOURCE_CLS: Record<string, string> = {
+  MANUAL: "bg-blue-50 text-blue-700 border-blue-200",
+  AUTO_FILL: "bg-purple-50 text-purple-700 border-purple-200",
+  SHEET_SYNC: "bg-green-50 text-green-700 border-green-200",
+  IMPORT: "bg-amber-50 text-amber-700 border-amber-200",
+  UNKNOWN: "bg-gray-50 text-gray-600 border-gray-200",
+}
+
+function fmtShortDate(iso: string): string {
+  const d = new Date(iso)
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
 }
 
 export default function CellEditModal({
@@ -34,6 +58,9 @@ export default function CellEditModal({
   date,
   initialVal,
   initialNote,
+  initialSource,
+  initialSourceBy,
+  initialUpdatedAt,
   saving,
   saveError,
   onClose,
@@ -97,6 +124,21 @@ export default function CellEditModal({
           className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 mb-4 resize-none"
           maxLength={200}
         />
+        {initialSource && (
+          <div className="mb-3 text-[10px] text-gray-500 border-t border-gray-100 pt-2">
+            <span className={`inline-block px-1.5 py-0.5 rounded-sm border text-[10px] font-medium ${SOURCE_CLS[initialSource] ?? SOURCE_CLS.UNKNOWN}`}>
+              {SOURCE_LABEL[initialSource] ?? initialSource}
+            </span>
+            {initialSourceBy && (
+              <span className="ml-1.5" title={initialSourceBy}>
+                bởi <span className="font-medium text-gray-700">{initialSourceBy === "cron" ? "cron" : initialSourceBy.includes("@") ? initialSourceBy.split("@")[0] : "—"}</span>
+              </span>
+            )}
+            {initialUpdatedAt && (
+              <span className="ml-1.5 text-gray-400">· {fmtShortDate(initialUpdatedAt)}</span>
+            )}
+          </div>
+        )}
         {saveError && (
           <div className="mb-3 flex items-start gap-2 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-[11px]">
             <AlertTriangle size={13} className="shrink-0 mt-0.5" />
