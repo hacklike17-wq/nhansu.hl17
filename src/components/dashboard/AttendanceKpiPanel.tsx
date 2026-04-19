@@ -20,11 +20,11 @@ type Card = {
 }
 
 const CARDS: Card[] = [
-  { code: 'DM', label: 'Đi muộn',        icon: <Clock3 size={16}/>,        cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-  { code: 'NP', label: 'Nghỉ phép',      icon: <CalendarOff size={16}/>,   cls: 'bg-blue-50 text-blue-700 border-blue-200' },
-  { code: 'NS', label: 'Nghỉ sai',       icon: <AlertTriangle size={16}/>, cls: 'bg-red-50 text-red-700 border-red-200' },
-  { code: 'KL', label: 'Không lương',    icon: <Ban size={16}/>,           cls: 'bg-rose-50 text-rose-700 border-rose-200' },
-  { code: 'QC', label: 'Quên chấm công', icon: <HelpCircle size={16}/>,    cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+  { code: 'ĐM',  label: 'Đi muộn',          icon: <Clock3 size={16}/>,        cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { code: 'NP',  label: 'Nghỉ (lần 1)',     icon: <CalendarOff size={16}/>,   cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { code: 'KL',  label: 'Nghỉ không lương', icon: <Ban size={16}/>,           cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+  { code: 'LT',  label: 'Nghỉ Lễ tết',      icon: <AlertTriangle size={16}/>, cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { code: 'QCC', label: 'Quên chấm công',   icon: <HelpCircle size={16}/>,    cls: 'bg-orange-50 text-orange-700 border-orange-200' },
 ]
 
 type ApiResponse = {
@@ -72,7 +72,7 @@ export default function AttendanceKpiPanel({
     }
   )
 
-  const tally: KpiBreakdown = data?.tally ?? initialKpi ?? { DM: 0, NP: 0, NS: 0, KL: 0, QC: 0 }
+  const tally: KpiBreakdown = data?.tally ?? initialKpi ?? { "ĐM": 0, NP: 0, KL: 0, LT: 0, QCC: 0 }
   const totalRows = data?.totalRows ?? 0
   const scopeLabel =
     data?.scope === 'self'

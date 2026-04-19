@@ -311,7 +311,7 @@ const getMyAttendance: ToolDefinition = {
 const getMyKpiViolations: ToolDefinition = {
   name: "get_my_kpi_violations",
   description:
-    "Liệt kê vi phạm KPI của người đang hỏi trong 1 tháng. Mỗi vi phạm có mảng `types` (ví dụ ['NP','DM'] = đi muộn + về sớm cùng ngày) và ghi chú. Dùng khi user hỏi 'tôi vi phạm gì tháng này', 'tôi bị trừ điểm gì'.",
+    "Liệt kê vi phạm KPI của người đang hỏi trong 1 tháng. Mỗi vi phạm có mảng `types` (ĐM=đi muộn, NP=nghỉ lần 1, KL=nghỉ không lương, LT=lễ tết, QCC=quên chấm công) và ghi chú. Dùng khi user hỏi 'tôi vi phạm gì tháng này', 'tôi bị trừ điểm gì'.",
   scope: "self",
   parameters: {
     type: "object",

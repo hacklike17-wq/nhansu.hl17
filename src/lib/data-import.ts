@@ -147,27 +147,27 @@ function validateEmpDate(
 
 /**
  * Letter codes that can appear in a chấm công cell alongside numeric values.
- * Mirrors the KPI violation taxonomy the user uses — 5 codes total. Each
- * code maps to (units, note) so the chấm công row still carries the right
+ * Each code maps to (units, note) so the chấm công row still carries the right
  * salary-day count even though the cell is a letter. Anything not in this
- * table is treated as DM ("đi muộn") by the parser — per user's decision
- * that messy cells should silently default to DM instead of blocking the
+ * table is treated as ĐM ("đi muộn") by the parser — per user's decision
+ * that messy cells should silently default to ĐM instead of blocking the
  * whole file.
  */
 export const WORK_UNIT_CODE_MAP: Record<string, { units: number; note: string }> = {
-  DM: { units: 1, note: "Đi muộn" },
-  NP: { units: 1, note: "Nghỉ phép" },
-  NS: { units: 0, note: "Nghỉ sai" },
-  KL: { units: 0, note: "Nghỉ" },
-  QC: { units: 1, note: "Quên chấm công" },
+  "ĐM":  { units: 1, note: "Đi muộn" },
+  NP:    { units: 0, note: "Nghỉ phép" },
+  KL:    { units: 0, note: "Nghỉ không lương" },
+  LT:    { units: 1, note: "Nghỉ Lễ tết" },
+  TS:    { units: 1, note: "Nghỉ thai sản" },
+  QCC:   { units: 1, note: "Quên chấm công" },
 }
 
 /**
  * Matrix cell semantics for chấm công:
- *   - numeric 0 / 0.5 / 1 / 1.5 / 2 / ...  → work_unit with units = value
- *   - "DM" / "NP" / "NS" / "KL" / "QC"     → mapped via WORK_UNIT_CODE_MAP
- *   - Any other non-empty string            → default to DM (unknown code
- *                                             fallback, per user spec)
+ *   - numeric 0 / 0.5 / 1 / 1.5 / 2 / ...          → work_unit with units = value
+ *   - "ĐM" / "NP" / "KL" / "LT" / "TS" / "QCC"     → mapped via WORK_UNIT_CODE_MAP
+ *   - Any other non-empty string                    → default to ĐM (unknown code
+ *                                                     fallback, per user spec)
  */
 export function planWorkUnitsImport(
   ws: ExcelJS.Worksheet,
@@ -206,7 +206,7 @@ export function planWorkUnitsImport(
       const s = raw.trim().toUpperCase()
       const mapped = WORK_UNIT_CODE_MAP[s]
       if (mapped) {
-        // Known letter code (DM / NP / NS / KL / QC)
+        // Known letter code (ĐM / NP / KL / LT / TS / QCC)
         units = mapped.units
         note = mapped.note
       } else {
@@ -215,17 +215,17 @@ export function planWorkUnitsImport(
         if (Number.isFinite(n)) {
           units = n
         } else {
-          // Unknown token — default to DM per user spec, but keep the
+          // Unknown token — default to ĐM per user spec, but keep the
           // original literal in the note so HR can audit later.
-          units = WORK_UNIT_CODE_MAP.DM.units
-          note = `${WORK_UNIT_CODE_MAP.DM.note} (gốc: "${raw}")`
+          units = WORK_UNIT_CODE_MAP["ĐM"].units
+          note = `${WORK_UNIT_CODE_MAP["ĐM"].note} (gốc: "${raw}")`
         }
       }
     } else {
       // Non-string, non-number cell (e.g. boolean, unexpected object) —
-      // very rare, still default to DM instead of blocking the file.
-      units = WORK_UNIT_CODE_MAP.DM.units
-      note = `${WORK_UNIT_CODE_MAP.DM.note} (gốc: ${JSON.stringify(raw)})`
+      // very rare, still default to ĐM instead of blocking the file.
+      units = WORK_UNIT_CODE_MAP["ĐM"].units
+      note = `${WORK_UNIT_CODE_MAP["ĐM"].note} (gốc: ${JSON.stringify(raw)})`
     }
 
     if (units < 0 || units > 3) {
@@ -299,7 +299,7 @@ export function planOvertimeImport(
       const n = Number(s)
       if (!Number.isFinite(n)) {
         // Non-numeric cell in an overtime sheet is almost always a
-        // day-off marker (DM/NP/NS/KL/QC) that the user reused across
+        // day-off marker (ĐM/NP/KL/LT/TS/QCC) that the user reused across
         // sheets. Silently skip — tăng ca only makes sense for numeric
         // hour values.
         skipped.push({
@@ -353,10 +353,10 @@ export function planOvertimeImport(
 /**
  * Matrix cell semantics for KPI vi phạm:
  *   - Any truthy value (number ≥ 1, "1", "x", "X", "✓") → create violation
- *     with types = ["DM"] (default per user decision).
+ *     with types = ["ĐM"] (default per user decision).
  *   - Blank → no row.
  *   - 0 or "0" → skip (explicit "no violation" marker).
- *   - Multi-code strings like "DM,NS" → parse as array of known codes.
+ *   - Multi-code strings like "ĐM,KL" → parse as array of known codes.
  */
 export function planKpiImport(
   ws: ExcelJS.Worksheet,
@@ -374,7 +374,7 @@ export function planKpiImport(
     dc => dc.date >= ctx.monthStart && dc.date <= ctx.monthEnd
   )
 
-  const VALID_CODES = new Set(["DM", "NP", "NS", "KL", "QC"])
+  const VALID_CODES = new Set(["ĐM", "NP", "KL", "LT", "QCC"])
 
   for (const cell of parsed.cells) {
     const v = validateEmpDate(cell.empCode, cell.date, ctx)
@@ -392,7 +392,7 @@ export function planKpiImport(
 
     if (typeof raw === "number") {
       if (raw === 0) continue
-      types = ["DM"]
+      types = ["ĐM"]
     } else if (typeof raw === "string") {
       const s = raw.trim().toUpperCase()
       if (!s || s === "0") continue
@@ -405,8 +405,8 @@ export function planKpiImport(
       if (recognized.length > 0) {
         types = recognized
       } else {
-        // Any other non-empty marker ("x", "1", "✓", "v"…) → default DM
-        types = ["DM"]
+        // Any other non-empty marker ("x", "1", "✓", "v"…) → default ĐM
+        types = ["ĐM"]
       }
     } else {
       errors.push({

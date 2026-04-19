@@ -99,7 +99,7 @@ describe("ENTRY_ALLOWED_COLUMNS (line-item breakdown whitelist)", () => {
 describe("KpiViolationType", () => {
   it("has all 5 KPI codes at the type level", () => {
     // Compile-time check — if the type shrinks, this will fail tsc.
-    const codes: KpiViolationType[] = ["DM", "NP", "NS", "KL", "QC"]
+    const codes: KpiViolationType[] = ["ĐM", "NP", "KL", "LT", "QCC"]
     expect(codes).toHaveLength(5)
   })
 })

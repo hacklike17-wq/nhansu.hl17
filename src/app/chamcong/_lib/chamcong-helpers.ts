@@ -69,11 +69,11 @@ export function attLabel(units: number | null): string {
 // ─── KPI (Phase 3 của chamcong) ───────────────────────────────────────────────
 
 export const KPI_CONFIG: Record<KpiViolationType, { full: string; cls: string; dot: string }> = {
-  DM: { full: "Đi muộn",        cls: "bg-amber-100 text-amber-700 border-amber-200",     dot: "bg-amber-400" },
-  NP: { full: "Nghỉ phép",      cls: "bg-blue-100 text-blue-700 border-blue-200",        dot: "bg-blue-400"  },
-  NS: { full: "Nghỉ sai",       cls: "bg-red-100 text-red-700 border-red-200",           dot: "bg-red-400"   },
-  KL: { full: "Không lương",    cls: "bg-rose-100 text-rose-800 border-rose-200",        dot: "bg-rose-500"  },
-  QC: { full: "Quên chấm công", cls: "bg-orange-100 text-orange-700 border-orange-200",  dot: "bg-orange-400" },
+  "ĐM":  { full: "Đi muộn",          cls: "bg-amber-100 text-amber-700 border-amber-200",    dot: "bg-amber-400"  },
+  NP:    { full: "Nghỉ (lần 1)",     cls: "bg-blue-100 text-blue-700 border-blue-200",       dot: "bg-blue-400"   },
+  KL:    { full: "Nghỉ không lương", cls: "bg-rose-100 text-rose-800 border-rose-200",       dot: "bg-rose-500"   },
+  LT:    { full: "Nghỉ Lễ tết",      cls: "bg-emerald-100 text-emerald-700 border-emerald-200", dot: "bg-emerald-400" },
+  QCC:   { full: "Quên chấm công",   cls: "bg-orange-100 text-orange-700 border-orange-200", dot: "bg-orange-400" },
 }
 
 export const KPI_TYPES = Object.keys(KPI_CONFIG) as KpiViolationType[]

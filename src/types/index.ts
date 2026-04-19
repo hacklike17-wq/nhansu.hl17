@@ -287,7 +287,7 @@ export type OvertimeEntry = {
 }
 
 /* ─── KPI Violations (Chuyên cần) ─── */
-export type KpiViolationType = 'DM' | 'NP' | 'NS' | 'KL' | 'QC'
+export type KpiViolationType = 'ĐM' | 'NP' | 'KL' | 'LT' | 'QCC'
 
 export type KpiViolation = {
   id: string

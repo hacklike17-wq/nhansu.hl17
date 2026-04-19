@@ -97,9 +97,9 @@ export async function GET(_req: NextRequest) {
         _sum: { units: true },
       }),
       // KpiViolation.types is a String[] — 1 row can hold multiple violation codes
-      // (e.g. ['NP','DM'] = late + early leave on the same day). We must sum the
-      // total type count per employee, matching /api/dashboard/attendance-kpi which
-      // is the single source of truth for KPI violation counts.
+      // (e.g. ['NP','ĐM'] = late + first-day absence on the same day). We must sum
+      // the total type count per employee, matching /api/dashboard/attendance-kpi
+      // which is the single source of truth for KPI violation counts.
       db.kpiViolation.findMany({
         where: {
           companyId,

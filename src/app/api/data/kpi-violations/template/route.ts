@@ -13,8 +13,8 @@ import {
  *
  * Blank KPI tracking template. Cell semantics on import: any truthy
  * value ("1", "x", "✓", a number ≥ 1) creates a violation with
- * types=["DM"] (per the agreed default). Multi-code strings like
- * "DM,NS" are also accepted by the importer.
+ * types=["ĐM"] (per the agreed default). Multi-code strings like
+ * "ĐM,KL" are also accepted by the importer.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -54,8 +54,8 @@ export async function GET(req: NextRequest) {
       title: "BẢNG THEO DÕI KPI CHUYÊN CẦN",
       monthStr: month,
       subtitleParts: [
-        "Ô trống = không vi phạm · 1 hoặc x = có vi phạm (mặc định DM)",
-        "Có thể ghi nhiều loại: DM,NS,NP / DM;QC / …",
+        "Ô trống = không vi phạm · 1 hoặc x = có vi phạm (mặc định ĐM)",
+        "Có thể ghi nhiều loại: ĐM,KL / NP;QCC / LT …",
       ],
     })
     const dataStart = writeMatrixHeader(ws, nextRow, days)

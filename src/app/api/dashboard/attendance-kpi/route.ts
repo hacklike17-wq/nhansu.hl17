@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireSession, errorResponse } from "@/lib/permission"
 
-const CATEGORIES = ["DM", "NP", "NS", "KL", "QC"] as const
+const CATEGORIES = ["ĐM", "NP", "KL", "LT", "QCC"] as const
 type Category = (typeof CATEGORIES)[number]
 
 /**
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
       select: { id: true, employeeId: true, date: true, types: true, note: true },
     })
 
-    const tally: Record<Category, number> = { DM: 0, NP: 0, NS: 0, KL: 0, QC: 0 }
+    const tally: Record<Category, number> = { "ĐM": 0, NP: 0, KL: 0, LT: 0, QCC: 0 }
     for (const r of rows) {
       for (const t of r.types) {
         if ((CATEGORIES as readonly string[]).includes(t)) {

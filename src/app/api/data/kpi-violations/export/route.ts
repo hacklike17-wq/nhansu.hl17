@@ -12,7 +12,7 @@ import {
  * GET /api/data/kpi-violations/export?month=YYYY-MM
  *
  * Dumps current KPI violations to the matrix layout. Each cell holds the
- * comma-joined list of violation codes ("DM", "NS", etc.), or nothing
+ * comma-joined list of violation codes ("ĐM", "LT", etc.), or nothing
  * when the employee had no violation that day. Round-trip friendly with
  * the importer's multi-code string parsing.
  */
