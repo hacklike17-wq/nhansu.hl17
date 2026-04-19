@@ -156,7 +156,7 @@ async function main() {
       password: "hoa@123",
     },
     {
-      code: "NV002",
+      code: "NV011",
       fullName: "Đào Trọng Phụng",
       email: "daotrongphung260601@gmail.com",
       phone: "0346744743",
@@ -167,7 +167,7 @@ async function main() {
       password: "phung@123",
     },
     {
-      code: "NV003",
+      code: "NV009",
       fullName: "Bùi Minh Phượng",
       email: "bmdat2021@gmail.com",
       phone: "0973110786",
@@ -178,7 +178,7 @@ async function main() {
       password: "phuong@123",
     },
     {
-      code: "NV004",
+      code: "NV006",
       fullName: "Phạm Đình Quân",
       email: "annquanidol9009@gmail.com",
       phone: "0978267283",
@@ -189,7 +189,7 @@ async function main() {
       password: "quan@123",
     },
     {
-      code: "NV005",
+      code: "NV004",
       fullName: "Nguyễn Duy Dương",
       email: "nguyenduong1996tb@gmail.com",
       phone: "0967188711",
@@ -200,7 +200,7 @@ async function main() {
       password: "duong@123",
     },
     {
-      code: "NV006",
+      code: "NV002",
       fullName: "Nguyễn Trường Giang",
       email: "gianghugl0212@gmail.com",
       phone: "0866657532",
@@ -211,7 +211,7 @@ async function main() {
       password: "giang@123",
     },
     {
-      code: "NV007",
+      code: "NV003",
       fullName: "Nguyễn Mạnh Tiến",
       email: "nguyenmanhtien.dvfb.93@gmail.com",
       phone: "0826131366",
