@@ -87,6 +87,32 @@ export async function PATCH(
     const baseSalaryChanged = data.baseSalary !== undefined && Number(data.baseSalary) !== Number(existing.baseSalary)
     const accountStatusChanged = data.accountStatus && data.accountStatus !== existing.accountStatus
 
+    // --- Detect sensitive-field changes for audit log ---
+    // These fields impact payroll, tax, social insurance, or banking. Any
+    // mutation must be traceable back to the actor + before/after values.
+    const SENSITIVE_FIELDS = [
+      "baseSalary",
+      "responsibilitySalary",
+      "taxCode",
+      "bhxhCode",
+      "bankAccount",
+      "bankName",
+      "email",
+      "contractType",
+      "startDate",
+      "endDate",
+      "accountStatus",
+    ] as const
+    const sensitiveDiff: Record<string, { from: unknown; to: unknown }> = {}
+    for (const field of SENSITIVE_FIELDS) {
+      if ((data as any)[field] === undefined) continue
+      const oldVal = (existing as any)[field]
+      const newVal = (data as any)[field]
+      if (String(oldVal ?? "") !== String(newVal ?? "")) {
+        sensitiveDiff[field] = { from: oldVal, to: newVal }
+      }
+    }
+
     const employee = await db.$transaction(async (tx: any) => {
       const emp = await tx.employee.update({
         where: { id },
@@ -117,6 +143,24 @@ export async function PATCH(
         await tx.user.updateMany({
           where: { employeeId: id, companyId },
           data: { password: hashed },
+        })
+      }
+
+      // Audit: only log when a tracked sensitive field actually changed
+      // OR password was reset. Plain profile edits (phone/address) skip.
+      if (Object.keys(sensitiveDiff).length > 0 || accountPassword?.trim()) {
+        await tx.auditLog.create({
+          data: {
+            companyId,
+            entityType: "Employee",
+            entityId: id,
+            action: "UPDATE_SENSITIVE",
+            changedBy: ctx.userId,
+            changes: {
+              ...sensitiveDiff,
+              ...(accountPassword?.trim() ? { passwordReset: true } : {}),
+            },
+          },
         })
       }
 
@@ -171,6 +215,25 @@ export async function DELETE(
       await tx.user.updateMany({
         where: { employeeId: id, companyId },
         data: { password: null },
+      })
+      // Audit trail — who terminated, when, snapshot of employee at time of delete
+      await tx.auditLog.create({
+        data: {
+          companyId,
+          entityType: "Employee",
+          entityId: id,
+          action: "SOFT_DELETE",
+          changedBy: ctx.userId,
+          changes: {
+            fullName: emp.fullName,
+            email: emp.email,
+            code: emp.code,
+            department: emp.department,
+            position: emp.position,
+            previousStatus: emp.status,
+            previousAccountStatus: emp.accountStatus,
+          },
+        },
       })
     })
 

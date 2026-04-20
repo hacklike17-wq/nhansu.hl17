@@ -2,15 +2,23 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { z } from "zod"
 import { markDraftPayrollsStale, recalculateMonth } from "@/lib/services/payroll.service"
-import { requireSession, requireRole, errorResponse } from "@/lib/permission"
+import { requirePermission, requireRole, errorResponse } from "@/lib/permission"
 
 const UpdateSchema = z.object({
   enableInsuranceTax: z.boolean(),
 })
 
+/**
+ * GET returns only the insurance-tax flag used by /luong to render net
+ * salary. Gated by `dashboard.view` so every logged-in role (admin, manager,
+ * employee) can read but unauthenticated cannot. The tight `select` clause
+ * prevents accidental field leaks if CompanySettings grows more sensitive
+ * columns (vd sheetUrl, API keys) — if you add fields, DO NOT widen this
+ * select without updating the permission check.
+ */
 export async function GET() {
   try {
-    const ctx = await requireSession()
+    const ctx = await requirePermission("dashboard.view")
     const settings = await db.companySettings.findUnique({
       where: { companyId: ctx.companyId ?? "" },
       select: { enableInsuranceTax: true },

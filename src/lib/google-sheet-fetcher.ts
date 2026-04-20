@@ -8,8 +8,13 @@ export type SheetTabs = {
   availableTabs: string[]
 }
 
+// Must match the canonical Google Sheets URL format exactly:
+//   https://docs.google.com/spreadsheets/d/<ID>/[edit|view|export|...]
+// Anchoring with `\b` after ID (followed by /, ?, or end-of-string) rejects
+// sneaky prefixes like https://docs.google.com/spreadsheets/d/ID@evil.com/...
+// even though the build URL only uses the extracted ID.
 const GOOGLE_SHEET_URL_RE =
-  /^https:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/
+  /^https:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)(?:[/?#]|$)/
 
 const FETCH_TIMEOUT_MS = 30_000
 
