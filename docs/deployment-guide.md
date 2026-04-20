@@ -92,15 +92,22 @@ curl -i -X POST http://localhost:3010/api/cron/sync-sheet \
 ```
 Expected 200 JSON with per-company sync results. A 401 means the header or secret is wrong.
 
-### Legacy Crontab Pattern (superseded)
+### Scheduler choice
 
-The old approach encoded the schedule directly in crontab (e.g., `0 18 * * 1-6`). This is no longer used. The new hourly-fire + endpoint-self-filter approach is active.
+**Canonical scheduler: crontab** — the config shown at the top of this section (hourly-fire on `0 * * * *`) is the single source of truth. The endpoint self-filters by the VN hour configured in `/caidat`, so admins can change the hour via UI without SSH.
 
-### Systemd Timer Option
+> ⚠️ **DO NOT run both crontab AND systemd timer for the same endpoint.** They will fire twice per hour and the auto-fill endpoint may double-write WorkUnit rows. On 2026-04-20 we removed a stale `nhansu-autofill.timer` (legacy `Mon..Sat 18:00` pattern) that coexisted with the crontab. If you see it on a VPS, delete it:
+> ```bash
+> systemctl disable --now nhansu-autofill.timer
+> rm /etc/systemd/system/nhansu-autofill.{timer,service}
+> systemctl daemon-reload
+> ```
 
-For a more robust setup with automatic retry on failure, use systemd timers. See the section below for the Option A setup (systemd). The timer schedule changes to `OnCalendar=*-*-* *:00:00` (every hour) instead of a fixed time.
+**Legacy patterns (no longer used):** the old crontab encoded the schedule directly (e.g., `0 18 * * 1-6`). This was replaced by the hourly-fire + endpoint-self-filter pattern so UI-driven hour changes take effect without SSH.
 
-### Option A — Systemd timer (recommended on a real VPS)
+### Alternative: Systemd timer (optional — only if replacing crontab)
+
+Use systemd only if you specifically need retry-on-failure or `journalctl` log integration. **Disable the crontab entries first** to avoid double-fire.
 
 Create `/etc/systemd/system/nhansu-autofill.service`:
 ```ini
@@ -134,6 +141,8 @@ Unit=nhansu-autofill.service
 WantedBy=timers.target
 ```
 
+`OnCalendar` must be **hourly** — any fixed-hour schedule (e.g., `Mon..Sat 18:00`) bypasses the UI-driven hour filter.
+
 Enable + start:
 ```bash
 sudo systemctl daemon-reload
@@ -141,16 +150,9 @@ sudo systemctl enable --now nhansu-autofill.timer
 sudo systemctl list-timers | grep nhansu   # verify next run time
 ```
 
-### Option B — Crontab (simpler if systemd not available)
+Repeat the service+timer pair for `sync-sheet` if needed.
 
-Fire every hour on the hour — the endpoint self-filters by the VN hour configured in the DB:
-```cron
-CRON_SECRET=<paste the same value>
-0 * * * * curl -sfX POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3010/api/cron/auto-fill-attendance >> /var/www/nhansu/logs/cron-autofill.log 2>&1
-0 * * * * curl -sfX POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3010/api/cron/sync-sheet >> /var/www/nhansu/logs/cron-sync.log 2>&1
-```
-
-### Option C — Vercel Cron (if deploying on Vercel)
+### Vercel Cron (if deploying on Vercel)
 
 Add to `vercel.json`:
 ```json
