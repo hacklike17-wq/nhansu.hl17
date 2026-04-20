@@ -14,6 +14,7 @@ type PayrollRow = {
   baseSalary: number | string
   responsibilitySalary: number | string
   workSalary: number | string
+  netWorkUnits: number | string
   overtimeHours: number | string
   overtimePay: number | string
   tienPhuCap: number | string
@@ -28,6 +29,7 @@ type PayrollRow = {
   netSalary: number | string
   needsRecalc?: boolean
   note?: string | null
+  salaryValues?: Array<{ columnKey: string; value: number | string }>
 }
 
 type Props = {
@@ -62,23 +64,31 @@ function LineRow({
   value,
   tone = 'normal',
   onClick,
+  alwaysShow = false,
+  format = 'vnd',
 }: {
   label: string
   value: number
   tone?: 'normal' | 'positive' | 'negative' | 'muted'
   onClick?: () => void
+  alwaysShow?: boolean
+  format?: 'vnd' | 'number'
 }) {
-  if (!value) return null
+  if (!alwaysShow && !value) return null
+  const isZero = !value
+  const effTone = isZero && alwaysShow ? 'muted' : tone
   const cls =
-    tone === 'positive'
-      ? 'text-gray-900'
-      : tone === 'negative'
-        ? 'text-red-600'
-        : tone === 'muted'
-          ? 'text-gray-500'
-          : 'text-gray-900'
-  const prefix = tone === 'negative' ? '− ' : ''
+    effTone === 'negative'
+      ? 'text-red-600'
+      : effTone === 'muted'
+        ? 'text-gray-400'
+        : 'text-gray-900'
+  const prefix = effTone === 'negative' && !isZero ? '− ' : ''
   const clickable = typeof onClick === 'function'
+  const display =
+    format === 'number'
+      ? new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(value)
+      : `${prefix}${fmtVND(value)} ₫`
   return (
     <div
       className={`flex items-center justify-between py-2 border-b border-gray-50 last:border-0 ${
@@ -87,13 +97,18 @@ function LineRow({
       onClick={onClick}
       title={clickable ? 'Click để xem chi tiết' : undefined}
     >
-      <span className={`text-xs ${tone === 'muted' ? 'text-gray-400' : 'text-gray-600'}`}>
+      <span className={`text-xs ${effTone === 'muted' ? 'text-gray-400' : 'text-gray-600'}`}>
         {label}
         {clickable && <span className="ml-1 text-[10px] text-blue-500">›</span>}
       </span>
-      <span className={`text-xs font-semibold tabular-nums ${cls}`}>{prefix}{fmtVND(value)} ₫</span>
+      <span className={`text-xs font-semibold tabular-nums ${cls}`}>{display}</span>
     </div>
   )
+}
+
+function getSalaryValue(payroll: { salaryValues?: Array<{ columnKey: string; value: number | string }> } | null | undefined, key: string): number {
+  const sv = payroll?.salaryValues?.find(s => s.columnKey === key)
+  return sv ? Number(sv.value ?? 0) : 0
 }
 
 export default function PersonalSalaryView({
@@ -278,13 +293,16 @@ export default function PersonalSalaryView({
                 </div>
               </div>
               <div className="px-5 py-2">
-                <LineRow label="Lương cơ bản"       value={num(payroll.baseSalary)} />
+                <LineRow label="Lương cơ bản"       value={num(payroll.baseSalary)} alwaysShow />
                 <LineRow label="Lương trách nhiệm"  value={num(payroll.responsibilitySalary)} />
-                <LineRow label="Lương công thực tế" value={num(payroll.workSalary)} tone="muted"/>
-                <LineRow label="Tiền tăng ca"       value={num(payroll.overtimePay)} />
-                <LineRow label="KPI chuyên cần"     value={num(payroll.kpiChuyenCan)} />
-                <LineRow label="Phụ cấp"            value={num(payroll.tienPhuCap)} onClick={num(payroll.tienPhuCap) ? () => setEntriesModal({ columnKey: 'tien_phu_cap', label: 'Phụ cấp' }) : undefined} />
-                <LineRow label="Tiền ăn"            value={num(payroll.mealPay)} />
+                <LineRow label="Công số"            value={num(payroll.netWorkUnits)} format="number" alwaysShow />
+                <LineRow label="Tổng lương CB"      value={num(payroll.workSalary)} alwaysShow />
+                <LineRow label="Tổng Lương TN"      value={getSalaryValue(payroll, 'sum_luong_tn')} />
+                <LineRow label="Tiền tăng ca"       value={num(payroll.overtimePay)} alwaysShow />
+                <LineRow label="Tiền ăn"            value={num(payroll.mealPay)} alwaysShow />
+                <LineRow label="KPI chuyên cần"     value={num(payroll.kpiChuyenCan)} alwaysShow />
+                <LineRow label="KPI hiệu suất"      value={getSalaryValue(payroll, 'kpi_hieu_suat')} alwaysShow />
+                <LineRow label="Tiền phụ cấp"       value={num(payroll.tienPhuCap)} alwaysShow onClick={num(payroll.tienPhuCap) ? () => setEntriesModal({ columnKey: 'tien_phu_cap', label: 'Tiền phụ cấp' }) : undefined} />
               </div>
               <div className="px-5 py-3 bg-green-50/40 border-t border-gray-100 flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Tổng gross</span>
@@ -314,7 +332,7 @@ export default function PersonalSalaryView({
                   </>
                 )}
                 {showPitCol && <LineRow label="Thuế TNCN" value={num(payroll.pitTax)} tone="negative"/>}
-                <LineRow label="Trừ khác"      value={num(payroll.tienPhat)} tone="negative" onClick={num(payroll.tienPhat) ? () => setEntriesModal({ columnKey: 'tien_tru_khac', label: 'Trừ khác' }) : undefined}/>
+                <LineRow label="Tiền Trừ Khác" value={num(payroll.tienPhat)} tone="negative" alwaysShow onClick={num(payroll.tienPhat) ? () => setEntriesModal({ columnKey: 'tien_tru_khac', label: 'Tiền Trừ Khác' }) : undefined}/>
               </div>
               <div className="px-5 py-3 bg-red-50/40 border-t border-gray-100 flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Tổng trừ</span>
