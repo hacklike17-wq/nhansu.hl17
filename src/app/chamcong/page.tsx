@@ -537,7 +537,7 @@ export default function ChamCongPage() {
                       <td className={`${STICKY} px-3 py-1.5 group-hover:bg-blue-50/10`}>
                         <div className="font-medium text-gray-800 truncate">{emp.fullName}</div>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] text-gray-400 truncate">{emp.department}</span>
+                          <span className="text-[10px] text-gray-400 truncate">{emp.position || emp.department}</span>
                           {isManager && (
                             <button onClick={() => handleDeleteEmployeeMonth(emp)}
                               className="opacity-0 group-hover:opacity-100 transition-opacity text-red-300 hover:text-red-500"
@@ -615,7 +615,7 @@ export default function ChamCongPage() {
                     <tr key={emp.id} className="group border-b border-gray-50 hover:bg-orange-50/10">
                       <td className={`${STICKY} px-3 py-1.5 group-hover:bg-orange-50/10`}>
                         <div className="font-medium text-gray-800 truncate">{emp.fullName}</div>
-                        <div className="text-[10px] text-gray-400 truncate">{emp.department}</div>
+                        <div className="text-[10px] text-gray-400 truncate">{emp.position || emp.department}</div>
                       </td>
                       {days.map(date => {
                         const ot = otMap[`${emp.id}|${date}`]
@@ -705,7 +705,7 @@ export default function ChamCongPage() {
                     <tr key={emp.id} className="group border-b border-gray-50 hover:bg-rose-50/10">
                       <td className={`${STICKY} px-3 py-1.5 group-hover:bg-rose-50/10`}>
                         <div className="font-medium text-gray-900 text-[11px]">{emp.fullName}</div>
-                        <div className="text-[10px] text-gray-400">{emp.department}</div>
+                        <div className="text-[10px] text-gray-400">{emp.position || emp.department}</div>
                       </td>
                       {days.map(date => {
                         const vio   = kpiMap[`${emp.id}|${date}`]

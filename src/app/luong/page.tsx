@@ -292,7 +292,7 @@ export default function LuongPage() {
                       <button key={e.id} onClick={() => handleAddEmployee(e.id)}
                         className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors">
                         <div className="text-xs font-medium text-gray-900">{e.fullName}</div>
-                        <div className="text-[10px] text-gray-400">{e.department} · {e.email}</div>
+                        <div className="text-[10px] text-gray-400">{e.position || e.department} · {e.email}</div>
                       </button>
                     ))}
                   </div>
@@ -413,7 +413,7 @@ export default function LuongPage() {
                             })()}
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="text-[10px] text-gray-400">{p.employee?.department}</span>
+                            <span className="text-[10px] text-gray-400">{p.employee?.position || p.employee?.department}</span>
                             {p.needsRecalc && (
                               <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600">
                                 ⟳ Cần cập nhật
