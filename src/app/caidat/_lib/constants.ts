@@ -45,6 +45,8 @@ export type EmpForm = {
   baseSalary: number
   responsibilitySalary: number
   address: string
+  workStartTime: string
+  workEndTime: string
   accountStatus: string
   accountPassword: string
 }
@@ -62,6 +64,8 @@ export const EMPTY_FORM: EmpForm = {
   baseSalary: 0,
   responsibilitySalary: 0,
   address: '',
+  workStartTime: '',
+  workEndTime: '',
   accountStatus: 'ACTIVE',
   accountPassword: '',
 }

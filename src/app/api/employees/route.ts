@@ -114,6 +114,8 @@ export async function POST(req: NextRequest) {
           taxCode: data.taxCode ?? null,
           bhxhCode: data.bhxhCode ?? null,
           code: data.code ?? null,
+          workStartTime: data.workStartTime || null,
+          workEndTime: data.workEndTime || null,
           accountStatus: data.accountStatus ?? "ACTIVE",
         },
       })

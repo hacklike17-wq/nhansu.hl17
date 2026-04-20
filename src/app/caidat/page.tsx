@@ -269,6 +269,8 @@ export default function CaiDatPage() {
       startDate: toDateStr(emp.startDate),
       contractType: emp.contractType ?? 'FULL_TIME',
       address: emp.address ?? '',
+      workStartTime: emp.workStartTime ?? '',
+      workEndTime: emp.workEndTime ?? '',
       accountStatus: emp.accountStatus ?? 'NO_ACCOUNT',
       accountPassword: '',
     })
@@ -1002,6 +1004,18 @@ export default function CaiDatPage() {
                   <input type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))}
                     className={`w-full px-3 py-2 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 ${formErrors.startDate ? 'border-red-400' : 'border-gray-200'}`} />
                   {formErrors.startDate && <span className="text-[10px] text-red-500 mt-0.5 block">{formErrors.startDate}</span>}
+                </div>
+                {/* Giờ làm việc (start + end) */}
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-semibold text-gray-600 mb-1">Giờ làm việc</label>
+                  <div className="flex items-center gap-2">
+                    <input type="time" value={form.workStartTime} onChange={e => setForm(f => ({ ...f, workStartTime: e.target.value }))}
+                      className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                    <span className="text-xs text-gray-400">đến</span>
+                    <input type="time" value={form.workEndTime} onChange={e => setForm(f => ({ ...f, workEndTime: e.target.value }))}
+                      className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Hiển thị cho HR xem lịch làm việc của NV (không dùng để tính lương).</p>
                 </div>
                 {/* Lương cơ bản */}
                 <div>

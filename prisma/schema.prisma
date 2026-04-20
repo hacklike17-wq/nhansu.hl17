@@ -267,6 +267,8 @@ model Employee {
   bankName             String?
   taxCode              String?
   bhxhCode             String?
+  workStartTime        String?
+  workEndTime          String?
   accountStatus        AccountStatus  @default(ACTIVE)
   deletedAt            DateTime?
   createdAt            DateTime       @default(now())

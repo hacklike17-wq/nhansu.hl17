@@ -20,6 +20,8 @@ export const CreateEmployeeSchema = z.object({
   gender: z.string().optional(),
   idCard: z.string().optional(),
   address: z.string().optional(),
+  workStartTime: z.string().regex(/^$|^\d{2}:\d{2}$/, "Định dạng HH:MM").optional(),
+  workEndTime: z.string().regex(/^$|^\d{2}:\d{2}$/, "Định dạng HH:MM").optional(),
   accountStatus: z.enum(["ACTIVE", "LOCKED", "NO_ACCOUNT"]).default("ACTIVE"),
   accountPassword: z.string().optional(),
 })
