@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { syncSheetForCompany, SyncError } from "@/lib/services/sheet-sync.service"
 import { SheetFetchError } from "@/lib/google-sheet-fetcher"
+import { verifyCronAuth } from "@/lib/cron-auth"
 
 /**
  * POST /api/cron/sync-sheet
@@ -10,23 +11,23 @@ import { SheetFetchError } from "@/lib/google-sheet-fetcher"
  * tự lọc theo `sheetSyncCronHour` đã cấu hình để chỉ chạy đúng giờ admin
  * mong muốn. Chạy 7 ngày/tuần (kể cả Chủ nhật) — khác auto-fill.
  *
- * Auth: Bearer CRON_SECRET (reuses the same env var as auto-fill cron).
+ * Auth: Bearer CRON_SECRET (reuses the same env var as auto-fill cron),
+ * validated in constant time via verifyCronAuth() to neutralize timing
+ * oracle attacks.
  */
 export async function POST(req: NextRequest) {
-  const expected = process.env.CRON_SECRET
-  if (!expected) {
-    return NextResponse.json(
-      {
-        error:
-          "CRON_SECRET is not set. Generate one with: " +
-          `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`,
-      },
-      { status: 500 }
-    )
-  }
-
-  const auth = req.headers.get("authorization") ?? ""
-  if (!auth.startsWith("Bearer ") || auth.slice(7) !== expected) {
+  const authResult = verifyCronAuth(req.headers.get("authorization"))
+  if (!authResult.ok) {
+    if (authResult.reason === "MISSING_SECRET") {
+      return NextResponse.json(
+        {
+          error:
+            "CRON_SECRET is not set. Generate one with: " +
+            `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`,
+        },
+        { status: 500 }
+      )
+    }
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

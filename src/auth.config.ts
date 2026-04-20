@@ -5,7 +5,12 @@ export const authConfig = {
   pages: {
     signIn: "/login",
   },
-  session: { strategy: "jwt" } as const,
+  session: {
+    strategy: "jwt",
+    // 8 hours — balances "NV không phải login liên tục trong ngày" with
+    // "NV bị terminated không kéo dài session 30 ngày (default Auth.js)".
+    maxAge: 8 * 60 * 60,
+  } as const,
   callbacks: {
     authorized({ auth, request }) {
       const isLoggedIn = !!auth?.user

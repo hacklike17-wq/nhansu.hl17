@@ -85,12 +85,27 @@ export async function getSessionCtx(): Promise<SessionCtx | null> {
   const role = normalizeRole(rawRole)
   const companyId: string | null = u.companyId ?? null
 
+  // Invalidate sessions for terminated/locked employees. Without this check,
+  // a soft-deleted employee's JWT stays valid until natural expiry (8h per
+  // auth.config.ts) — we enforce revocation at every request instead.
+  // Boss-admin users (no linked employeeId) bypass this gate by design.
+  const employeeId: string | null = u.employeeId ?? null
+  if (employeeId) {
+    const emp = await db.employee.findUnique({
+      where: { id: employeeId },
+      select: { deletedAt: true, accountStatus: true },
+    })
+    if (!emp || emp.deletedAt || emp.accountStatus === "LOCKED") {
+      return null
+    }
+  }
+
   // Re-resolve permissions from DB every call — do NOT trust JWT cache
   const permissions = await resolvePermissionsForUser(u.id, companyId, role)
 
   return {
     userId: u.id,
-    employeeId: u.employeeId ?? null,
+    employeeId,
     companyId,
     rawRole,
     role,
@@ -128,13 +143,4 @@ export function canApproveSalary(ctx: SessionCtx): boolean {
 
 export function canEditPayroll(ctx: SessionCtx): boolean {
   return ctx.role === "admin" || hasPermission(ctx.permissions, "luong.edit")
-}
-
-export function canViewEmployeePayroll(
-  ctx: SessionCtx,
-  targetEmployeeId: string
-): boolean {
-  if (ctx.role === "admin") return true
-  if (ctx.role === "manager" && hasPermission(ctx.permissions, "luong.view")) return true
-  return ctx.role === "employee" && ctx.employeeId === targetEmployeeId
 }

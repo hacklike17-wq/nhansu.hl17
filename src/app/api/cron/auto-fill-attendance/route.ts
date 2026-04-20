@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { recalculateMonth } from "@/lib/services/payroll.service"
 import { lockedEmployeeIdsForMonth } from "@/lib/chamcong-guard"
+import { verifyCronAuth } from "@/lib/cron-auth"
 
 /**
  * POST /api/cron/auto-fill-attendance
@@ -157,23 +158,18 @@ async function fillOneCompanyForToday(
 }
 
 export async function POST(req: NextRequest) {
-  const expected = process.env.CRON_SECRET
-  if (!expected) {
-    return NextResponse.json(
-      {
-        error:
-          "CRON_SECRET is not set. Generate one with: " +
-          `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`,
-      },
-      { status: 500 }
-    )
-  }
-
-  const auth = req.headers.get("authorization") ?? ""
-  if (!auth.startsWith("Bearer ") || auth.slice(7) !== expected) {
-    // Constant-time comparison would be nicer, but Bearer tokens are
-    // already random 32-byte hex so a constant-time mismatch doesn't
-    // help much. The rate-limit of a daily schedule caps abuse anyway.
+  const authResult = verifyCronAuth(req.headers.get("authorization"))
+  if (!authResult.ok) {
+    if (authResult.reason === "MISSING_SECRET") {
+      return NextResponse.json(
+        {
+          error:
+            "CRON_SECRET is not set. Generate one with: " +
+            `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`,
+        },
+        { status: 500 }
+      )
+    }
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
