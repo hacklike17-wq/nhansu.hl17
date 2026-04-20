@@ -350,7 +350,7 @@ export default function CaiDatPage() {
   return (
     <PageShell breadcrumb="Hệ thống" title="Cài đặt">
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 border border-gray-200 rounded-xl p-1 w-full md:w-fit flex-wrap overflow-x-auto">
+      <div className="flex gap-1 bg-gray-100 border border-gray-200 rounded-xl p-1 w-full md:w-fit overflow-x-auto [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {([
           ['company', 'Thông tin công ty', <Building2 key="b" size={13}/>],
           ['system', 'Hệ thống', <Settings key="s" size={13}/>],
@@ -490,8 +490,8 @@ export default function CaiDatPage() {
               </div>
             </div>
 
-            <div className="border border-gray-200 rounded-xl overflow-hidden">
-              <table className="w-full text-xs">
+            <div className="border border-gray-200 rounded-xl overflow-x-auto [-webkit-overflow-scrolling:touch]">
+              <table className="w-full text-xs min-w-[860px]">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th className="text-left px-4 py-2.5 font-semibold text-gray-500 w-6"></th>
@@ -698,8 +698,8 @@ export default function CaiDatPage() {
           </div>
 
           {/* Table */}
-          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-            <table className="w-full text-xs">
+          <div className="bg-white border border-gray-200 rounded-2xl overflow-x-auto [-webkit-overflow-scrolling:touch]">
+            <table className="w-full text-xs min-w-[900px]">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="text-left px-4 py-3 font-semibold text-gray-500">Nhân viên</th>
