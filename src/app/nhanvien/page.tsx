@@ -433,7 +433,7 @@ export default function NhanVienPage() {
           <div className="md:ml-auto flex items-center gap-2">
             <button
               onClick={() => setShowColPicker(v => !v)}
-              className="hidden md:inline-flex px-3 py-2 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 font-medium"
+              className="inline-flex px-3 py-2 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 font-medium"
             >
               Tuỳ chỉnh hiển thị
             </button>
@@ -465,14 +465,14 @@ export default function NhanVienPage() {
           </div>
         )}
 
-        {/* Table — desktop */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-xs">
+        {/* Table */}
+        <div className="overflow-x-auto [-webkit-overflow-scrolling:touch]">
+          <table className="w-full text-xs min-w-[900px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
                 <th className="text-left px-4 py-2.5 font-semibold text-gray-500 w-10"></th>
                 {LIST_COLUMNS.filter(c => visibleCols.has(c.key)).map(c => (
-                  <th key={c.key} className="text-left px-4 py-2.5 font-semibold text-gray-500">{c.label}</th>
+                  <th key={c.key} className="text-left px-4 py-2.5 font-semibold text-gray-500 whitespace-nowrap">{c.label}</th>
                 ))}
               </tr>
             </thead>
@@ -491,7 +491,7 @@ export default function NhanVienPage() {
                     </div>
                   </td>
                   {LIST_COLUMNS.filter(c => visibleCols.has(c.key)).map(c => (
-                    <td key={c.key} className="px-4 py-2 text-gray-700">{c.render(emp)}</td>
+                    <td key={c.key} className="px-4 py-2 text-gray-700 whitespace-nowrap">{c.render(emp)}</td>
                   ))}
                 </tr>
               ))}
@@ -500,42 +500,6 @@ export default function NhanVienPage() {
               )}
             </tbody>
           </table>
-        </div>
-
-        {/* Card view — mobile */}
-        <div className="md:hidden divide-y divide-gray-100">
-          {isLoading ? (
-            <div className="px-4 py-8 text-center text-xs text-gray-400">Đang tải...</div>
-          ) : filtered.length === 0 ? (
-            <div className="px-4 py-8 text-center text-xs text-gray-400">Không tìm thấy nhân viên nào</div>
-          ) : filtered.map((emp: any) => (
-            <button
-              key={emp.id}
-              onClick={() => setSelectedId(emp.id)}
-              className="w-full text-left px-4 py-3 active:bg-blue-50 transition"
-            >
-              <div className="flex items-start gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0 ${avatarColor(emp.id)}`}>
-                  {getInitials(emp.fullName)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <div className="font-semibold text-sm text-gray-900 truncate">{emp.fullName}</div>
-                    <span className="text-[10px] text-gray-400 font-mono shrink-0">{emp.code ?? '—'}</span>
-                  </div>
-                  <div className="text-[11px] text-gray-500 mt-0.5 truncate">
-                    {emp.position || '—'} · {emp.department || '—'}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${STATUS_MAP[emp.status]?.cls ?? ''}`}>
-                      {STATUS_MAP[emp.status]?.label ?? emp.status}
-                    </span>
-                    {emp.phone && <span className="text-[10px] text-gray-400">{emp.phone}</span>}
-                  </div>
-                </div>
-              </div>
-            </button>
-          ))}
         </div>
         <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500">
           <span>Hiển thị {filtered.length} / {employees.length} nhân viên</span>
