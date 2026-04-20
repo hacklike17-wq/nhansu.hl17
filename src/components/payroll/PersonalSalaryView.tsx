@@ -1,8 +1,10 @@
 'use client'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Wallet, TrendingUp, TrendingDown, CheckCircle2, Clock, Lock, Banknote, ThumbsUp, ThumbsDown, AlertTriangle, FileText, X } from 'lucide-react'
 import { fmtVND } from '@/lib/format'
 import { STATUS_MAP } from '@/app/luong/_lib/constants'
+import { buildRowVars } from '@/app/luong/_lib/row-helpers'
+import { useSalaryColumns } from '@/hooks/useSalaryColumns'
 import ApprovalHistory from './ApprovalHistory'
 import SalaryEntriesModal from './SalaryEntriesModal'
 
@@ -106,10 +108,6 @@ function LineRow({
   )
 }
 
-function getSalaryValue(payroll: { salaryValues?: Array<{ columnKey: string; value: number | string }> } | null | undefined, key: string): number {
-  const sv = payroll?.salaryValues?.find(s => s.columnKey === key)
-  return sv ? Number(sv.value ?? 0) : 0
-}
 
 export default function PersonalSalaryView({
   payroll,
@@ -130,6 +128,12 @@ export default function PersonalSalaryView({
   } | null>(null)
 
   const num = (v: number | string | undefined | null) => Number(v ?? 0)
+
+  const { salaryColumns } = useSalaryColumns()
+  const vars = useMemo(
+    () => (payroll ? buildRowVars(payroll, salaryColumns) : {}),
+    [payroll, salaryColumns]
+  )
 
   async function handleConfirm() {
     if (!payroll || !onConfirm) return
@@ -297,11 +301,11 @@ export default function PersonalSalaryView({
                 <LineRow label="Lương trách nhiệm"  value={num(payroll.responsibilitySalary)} />
                 <LineRow label="Công số"            value={num(payroll.netWorkUnits)} format="number" alwaysShow />
                 <LineRow label="Tổng lương CB"      value={num(payroll.workSalary)} alwaysShow />
-                <LineRow label="Tổng Lương TN"      value={getSalaryValue(payroll, 'sum_luong_tn')} />
+                <LineRow label="Tổng Lương TN"      value={vars['sum_luong_tn'] ?? 0} alwaysShow />
                 <LineRow label="Tiền tăng ca"       value={num(payroll.overtimePay)} alwaysShow />
                 <LineRow label="Tiền ăn"            value={num(payroll.mealPay)} alwaysShow />
                 <LineRow label="KPI chuyên cần"     value={num(payroll.kpiChuyenCan)} alwaysShow />
-                <LineRow label="KPI hiệu suất"      value={getSalaryValue(payroll, 'kpi_hieu_suat')} alwaysShow />
+                <LineRow label="KPI hiệu suất"      value={vars['kpi_hieu_suat'] ?? 0} alwaysShow />
                 <LineRow label="Tiền phụ cấp"       value={num(payroll.tienPhuCap)} alwaysShow onClick={num(payroll.tienPhuCap) ? () => setEntriesModal({ columnKey: 'tien_phu_cap', label: 'Tiền phụ cấp' }) : undefined} />
               </div>
               <div className="px-5 py-3 bg-green-50/40 border-t border-gray-100 flex items-center justify-between">
