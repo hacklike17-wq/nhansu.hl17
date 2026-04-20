@@ -135,6 +135,23 @@ export default function PersonalSalaryView({
     [payroll, salaryColumns]
   )
 
+  const { addTotal, subTotal } = useMemo(() => {
+    if (!payroll) return { addTotal: 0, subTotal: 0 }
+    const addCols = salaryColumns.filter((c: any) => c.calcMode === 'add_to_net')
+    const subCols = salaryColumns.filter((c: any) => c.calcMode === 'subtract_from_net')
+    const hasCalcMode = addCols.length > 0 || subCols.length > 0
+    if (hasCalcMode) {
+      return {
+        addTotal: addCols.reduce((s: number, c: any) => s + (vars[c.key] ?? 0), 0),
+        subTotal: subCols.reduce((s: number, c: any) => s + (vars[c.key] ?? 0), 0),
+      }
+    }
+    return {
+      addTotal: num(payroll.grossSalary),
+      subTotal: num(payroll.bhxhEmployee) + num(payroll.bhytEmployee) + num(payroll.bhtnEmployee) + num(payroll.pitTax),
+    }
+  }, [payroll, salaryColumns, vars])
+
   async function handleConfirm() {
     if (!payroll || !onConfirm) return
     if (!confirm('Bạn xác nhận số tiền trên bảng lương này là đúng? Sau khi xác nhận, bảng lương sẽ được khoá và không thể chỉnh sửa.')) return
@@ -309,9 +326,9 @@ export default function PersonalSalaryView({
                 <LineRow label="Tiền phụ cấp"       value={num(payroll.tienPhuCap)} alwaysShow onClick={num(payroll.tienPhuCap) ? () => setEntriesModal({ columnKey: 'tien_phu_cap', label: 'Tiền phụ cấp' }) : undefined} />
               </div>
               <div className="px-5 py-3 bg-green-50/40 border-t border-gray-100 flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Tổng gross</span>
+                <span className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Tổng tạm tính</span>
                 <span className="text-base font-bold text-green-700 tabular-nums">
-                  {fmtVND(num(payroll.grossSalary))} ₫
+                  {fmtVND(addTotal)} ₫
                 </span>
               </div>
             </div>
@@ -339,15 +356,9 @@ export default function PersonalSalaryView({
                 <LineRow label="Tiền Trừ Khác" value={num(payroll.tienPhat)} tone="negative" alwaysShow onClick={num(payroll.tienPhat) ? () => setEntriesModal({ columnKey: 'tien_tru_khac', label: 'Tiền Trừ Khác' }) : undefined}/>
               </div>
               <div className="px-5 py-3 bg-red-50/40 border-t border-gray-100 flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Tổng trừ</span>
+                <span className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Các khoản trừ</span>
                 <span className="text-base font-bold text-red-700 tabular-nums">
-                  − {fmtVND(
-                    num(payroll.bhxhEmployee) +
-                    num(payroll.bhytEmployee) +
-                    num(payroll.bhtnEmployee) +
-                    num(payroll.pitTax) +
-                    num(payroll.tienPhat)
-                  )} ₫
+                  {subTotal > 0 ? '− ' : ''}{fmtVND(subTotal)} ₫
                 </span>
               </div>
             </div>
@@ -368,12 +379,9 @@ export default function PersonalSalaryView({
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-[10px] text-gray-400">Gross − Trừ</div>
+                <div className="text-[10px] text-gray-400">Tổng tạm tính − Các khoản trừ</div>
                 <div className="text-[11px] text-gray-500 tabular-nums">
-                  {fmtVND(num(payroll.grossSalary))} −{' '}
-                  {fmtVND(
-                    num(payroll.grossSalary) - num(payroll.netSalary)
-                  )}
+                  {fmtVND(addTotal)} − {fmtVND(subTotal)}
                 </div>
               </div>
             </div>
