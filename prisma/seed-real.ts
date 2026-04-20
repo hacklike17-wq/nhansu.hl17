@@ -267,14 +267,15 @@ async function main() {
       },
     })
 
-    console.log(`  ✓ ${e.fullName.padEnd(25)} [${e.role}]  pass: ${e.password}`)
+    console.log(`  ✓ ${e.fullName.padEnd(25)} [${e.role}]`)
   }
 
   console.log(`\n✅ Hoàn tất! ${employees.length} nhân viên đã được tạo.`)
-  console.log("\n📋 Tài khoản đăng nhập:")
+  console.log("\n📋 Tài khoản đăng nhập (mật khẩu: xem hằng số trong seed-real.ts):")
   for (const e of employees) {
-    console.log(`   ${e.email.padEnd(42)} | ${e.password}`)
+    console.log(`   ${e.email}`)
   }
+  console.log("\n⚠️  KHÔNG dùng seed-real.ts trên VPS production — chỉ để dev/test seed.")
 }
 
 main()

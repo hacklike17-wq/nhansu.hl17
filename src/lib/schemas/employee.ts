@@ -23,7 +23,10 @@ export const CreateEmployeeSchema = z.object({
   workStartTime: z.string().regex(/^$|^\d{2}:\d{2}$/, "Định dạng HH:MM").optional(),
   workEndTime: z.string().regex(/^$|^\d{2}:\d{2}$/, "Định dạng HH:MM").optional(),
   accountStatus: z.enum(["ACTIVE", "LOCKED", "NO_ACCOUNT"]).default("ACTIVE"),
-  accountPassword: z.string().optional(),
+  // Optional. If provided, must be ≥8 chars. If omitted and account is
+  // ACTIVE/LOCKED, a secure random password is generated server-side and
+  // returned in the response for the admin to share out-of-band.
+  accountPassword: z.string().min(8, "Mật khẩu tối thiểu 8 ký tự").optional().or(z.literal("")),
 })
 
 export const UpdateEmployeeSchema = CreateEmployeeSchema

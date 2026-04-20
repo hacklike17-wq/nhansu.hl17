@@ -1,8 +1,7 @@
 import type {
-  Employee, CashflowItem, Department,
-  AttendanceRecord, SalaryRecord, LeaveRequest, Recruitment,
+  CashflowItem, Department, Recruitment,
   RevenueRecord, ExpenseRecord, DebtRecord, BudgetRecord,
-  ReportItem, CompanySettings, SystemConfig, PermissionGroup, SalaryColumn, WorkUnit,
+  ReportItem, CompanySettings, SystemConfig, PermissionGroup, SalaryColumn,
 } from '@/types'
 
 /* ═══════════════════════════════════════════════════
@@ -158,123 +157,11 @@ export const DEPARTMENTS: Department[] = [
   { id: 'D002', name: 'Chăm sóc khách hàng', code: 'CSKH', managerId: 'E001', managerName: 'Đào Trọng Phụng',  headcount: 1, budget: 200000000,  color: 'green'  },
 ]
 
-/* ═══════════════════════════════════════════════════
-   EMPLOYEES (8 records — Hacklike17)
-   ═══════════════════════════════════════════════════ */
-export const EMPLOYEES: Employee[] = [
-  { id:'E001', code:'NV001', name:'Đào Trọng Phụng',       email:'daotrongphung260601@gmail.com', phone:'0346744743', department:'Hacklike17', departmentId:'D001', deptColor:'blue',  position:'Chăm sóc khách hàng', role:'Nhân viên',  status:'working', joinDate:'2026-02-26', salary:8000000, responsibilitySalary:0, bankAccount:'--', bankName:'--', taxCode:'--', socialInsurance:'--', address:'--', dob:'2001-06-26', gender:'male',   hours:'--', contractType:'fulltime', accountEmail:'daotrongphung260601@gmail.com', accountPassword:'phung@123',  accountRole:'employee',   accountPermissions:[], accountStatus:'active' },
-  { id:'E002', code:'NV002', name:'Bùi Minh Phượng',       email:'bmdat2021@gmail.com',           phone:'0973110786', department:'Hacklike17', departmentId:'D001', deptColor:'blue',  position:'Nhân viên',            role:'Nhân viên',  status:'working', joinDate:'2026-01-06', salary:8000000, responsibilitySalary:0, bankAccount:'--', bankName:'--', taxCode:'--', socialInsurance:'--', address:'--', dob:'1987-11-20', gender:'female', hours:'--', contractType:'fulltime', accountEmail:'bmdat2021@gmail.com',           accountPassword:'phuong@123', accountRole:'employee',   accountPermissions:[], accountStatus:'active' },
-  { id:'E003', code:'NV003', name:'Phạm Đình Quân',        email:'anhquanidol9009@gmail.com',     phone:'0978267283', department:'Hacklike17', departmentId:'D001', deptColor:'blue',  position:'Nhân viên',            role:'Nhân viên',  status:'working', joinDate:'2026-04-01', salary:8000000, responsibilitySalary:0, bankAccount:'--', bankName:'--', taxCode:'--', socialInsurance:'--', address:'--', dob:'1997-09-05', gender:'male',   hours:'--', contractType:'fulltime', accountEmail:'anhquanidol9009@gmail.com',     accountPassword:'quan@123',   accountRole:'employee',   accountPermissions:[], accountStatus:'active' },
-  { id:'E004', code:'NV004', name:'Nguyễn Duy Dương',      email:'nguyenduong1996tb@gmail.com',   phone:'0967188711', department:'Hacklike17', departmentId:'D001', deptColor:'blue',  position:'Nhân viên',            role:'Nhân viên',  status:'working', joinDate:'2026-04-01', salary:9000000, responsibilitySalary:0, bankAccount:'--', bankName:'--', taxCode:'--', socialInsurance:'--', address:'--', dob:'1996-02-29', gender:'male',   hours:'--', contractType:'fulltime', accountEmail:'nguyenduong1996tb@gmail.com',   accountPassword:'duong@123',  accountRole:'admin',      accountPermissions:[], accountStatus:'active' },
-  { id:'E005', code:'NV005', name:'Nguyễn Trường Giang',   email:'gianghugi0212@gmail.com',       phone:'0866657532', department:'Hacklike17', departmentId:'D001', deptColor:'blue',  position:'Nhân viên',            role:'Nhân viên',  status:'working', joinDate:'2026-04-02', salary:8000000, responsibilitySalary:0, bankAccount:'--', bankName:'--', taxCode:'--', socialInsurance:'--', address:'--', dob:'2005-12-02', gender:'male',   hours:'--', contractType:'fulltime', accountEmail:'gianghugi0212@gmail.com',       accountPassword:'giang@123',  accountRole:'employee',   accountPermissions:[], accountStatus:'active' },
-  { id:'E006', code:'NV006', name:'Nguyễn Mạnh Tiến',      email:'nguyenmanhtien.dvfb.93@gmail.com', phone:'0826131366', department:'Hacklike17', departmentId:'D001', deptColor:'blue', position:'Nhân viên',       role:'Nhân viên',  status:'working', joinDate:'2026-04-02', salary:8000000, responsibilitySalary:0, bankAccount:'--', bankName:'--', taxCode:'--', socialInsurance:'--', address:'--', dob:'1993-06-03', gender:'male',   hours:'--', contractType:'fulltime', accountEmail:'nguyenmanhtien.dvfb.93@gmail.com', accountPassword:'tien@123', accountRole:'employee',  accountPermissions:[], accountStatus:'active' },
-  { id:'E007', code:'NV007', name:'Nguyễn Văn Tuấn',       email:'tuannvarena@gmail.com',         phone:'0869762258', department:'Hacklike17', departmentId:'D001', deptColor:'blue',  position:'Nhân viên',            role:'Nhân viên',  status:'working', joinDate:'2026-04-03', salary:8000000, responsibilitySalary:0, bankAccount:'--', bankName:'--', taxCode:'--', socialInsurance:'--', address:'--', dob:'2000-11-24', gender:'male',   hours:'--', contractType:'fulltime', accountEmail:'tuannvarena@gmail.com',         accountPassword:'tuan@123',   accountRole:'employee',   accountPermissions:[], accountStatus:'active' },
-  { id:'E008', code:'NV008', name:'Văn Hoà Nguyên',        email:'hoahenry1803@gmail.com',        phone:'0928976666', department:'Hacklike17', departmentId:'D001', deptColor:'blue',  position:'Quản lý',              role:'Quản lý',    status:'working', joinDate:'2026-04-03', salary:15000000, responsibilitySalary:2000000, bankAccount:'--', bankName:'--', taxCode:'--', socialInsurance:'--', address:'--', dob:'',           gender:'male',   hours:'--', contractType:'fulltime', accountEmail:'hoahenry1803@gmail.com',        accountPassword:'admin@123',  accountRole:'admin', accountPermissions:[], accountStatus:'active' },
-]
+/* EMPLOYEES, DEFAULT_WORK_UNITS, ATTENDANCE_DATA, SALARY_DATA và LEAVE_DATA
+   từng là mock data với PLAINTEXT PASSWORD trong source — đã xoá 2026-04-20
+   (security audit). Dashboard thật fetch qua getDashboardData() + Prisma;
+   seed production dùng prisma/seed-real.ts. */
 
-/* ═══════════════════════════════════════════════════
-   DEFAULT WORK UNITS (công số nhận mẫu tháng 04/2026)
-   ═══════════════════════════════════════════════════ */
-export const DEFAULT_WORK_UNITS: WorkUnit[] = (() => {
-  const workdays = [
-    '2026-04-01','2026-04-02','2026-04-03','2026-04-04','2026-04-07',
-    '2026-04-08','2026-04-09','2026-04-10','2026-04-11',
-  ]
-  const units: WorkUnit[] = []
-  let idx = 1
-  for (const emp of EMPLOYEES) {
-    for (const date of workdays) {
-      units.push({ id:`WU${String(idx++).padStart(4,'0')}`, employeeId:emp.id, employeeName:emp.name, date, units:1, note:'' })
-    }
-  }
-  return units
-})()
-
-/* ═══════════════════════════════════════════════════
-   ATTENDANCE (sample: 1 week for top employees)
-   ═══════════════════════════════════════════════════ */
-function genAttendance(): AttendanceRecord[] {
-  const records: AttendanceRecord[] = []
-  const dates = ['2026-04-07','2026-04-08','2026-04-09']
-  const emps = EMPLOYEES.slice(0, 15)
-  let id = 1
-  for (const emp of emps) {
-    for (const date of dates) {
-      const isLeave = emp.status === 'leave'
-      const isLate = Math.random() < 0.15
-      const checkIn = isLeave ? '—' : isLate ? '08:' + String(Math.floor(Math.random()*30+15)).padStart(2,'0') : '08:0' + Math.floor(Math.random()*8)
-      const checkOut = isLeave ? '—' : '17:' + String(Math.floor(Math.random()*30)).padStart(2,'0')
-      const ot = !isLeave && Math.random() < 0.3 ? Math.round(Math.random()*3*10)/10 : 0
-      records.push({
-        id: `ATT${String(id++).padStart(4,'0')}`,
-        employeeId: emp.id,
-        employeeName: emp.name,
-        department: emp.department,
-        date,
-        checkIn,
-        checkOut,
-        status: isLeave ? 'leave' : isLate ? 'late' : emp.status === 'remote' ? 'remote' : 'on_time',
-        overtime: ot,
-        note: isLeave ? 'Nghỉ phép năm' : isLate ? 'Kẹt xe' : '',
-      })
-    }
-  }
-  return records
-}
-export const ATTENDANCE_DATA: AttendanceRecord[] = genAttendance()
-
-/* ═══════════════════════════════════════════════════
-   SALARY
-   ═══════════════════════════════════════════════════ */
-export const SALARY_DATA: SalaryRecord[] = EMPLOYEES.filter(e => e.status !== 'resigned').map((emp, i) => {
-  const base = emp.salary || 8000000
-  const kpiAtt = Math.round(base * (0.9 + Math.random() * 0.1))
-  const kpiPerf = Math.round(base * (0.7 + Math.random() * 0.3))
-  const ot = Math.round(Math.random() * 2000000)
-  const holiday = 0
-  const bonus = Math.random() < 0.2 ? Math.round(Math.random() * 1000000) : 0
-  const si = Math.round(base * 0.08)
-  const hi = Math.round(base * 0.015)
-  const ui = Math.round(base * 0.01)
-  const deductions = si + hi + ui
-  const gross = base + ot + holiday + bonus
-  const taxable = gross - deductions - 11000000
-  const tax = taxable > 0 ? Math.round(taxable * 0.1) : 0
-  const net = gross - deductions - tax
-  return {
-    id: `SAL${String(i+1).padStart(4,'0')}`,
-    employeeId: emp.id,
-    employeeName: emp.name,
-    department: emp.department,
-    month: '2026-04',
-    baseSalary: base,
-    kpiAttendance: base > 0 ? Math.round((kpiAtt / base) * 100) : 0,
-    kpiPerformance: base > 0 ? Math.round((kpiPerf / base) * 100) : 0,
-    overtimePay: ot,
-    holidayPay: holiday,
-    bonus,
-    deductions,
-    socialInsurance: si,
-    tax,
-    otherCosts: 0,
-    totalGross: gross,
-    totalNet: net,
-    status: i < 3 ? 'paid' : i < 6 ? 'approved' : 'pending',
-    paidDate: i < 3 ? '2026-04-05' : undefined,
-  }
-})
-
-/* ═══════════════════════════════════════════════════
-   LEAVE REQUESTS
-   ═══════════════════════════════════════════════════ */
-export const LEAVE_DATA: LeaveRequest[] = [
-  { id:'LV001', employeeId:'E001', employeeName:'Đào Trọng Phụng',      department:'Hacklike17', type:'annual',   startDate:'2026-04-07', endDate:'2026-04-11', days:5, status:'approved', reason:'Du lịch gia đình',      approver:'Văn Hoà Nguyên', approvedDate:'2026-04-01', createdAt:'2026-03-25' },
-  { id:'LV002', employeeId:'E003', employeeName:'Phạm Đình Quân',       department:'Hacklike17', type:'sick',     startDate:'2026-04-08', endDate:'2026-04-09', days:2, status:'approved', reason:'Cảm cúm, có giấy BS',   approver:'Văn Hoà Nguyên', approvedDate:'2026-04-08', createdAt:'2026-04-08' },
-  { id:'LV003', employeeId:'E005', employeeName:'Nguyễn Trường Giang',  department:'Hacklike17', type:'personal', startDate:'2026-04-14', endDate:'2026-04-14', days:1, status:'pending',  reason:'Việc cá nhân',          approver:'Văn Hoà Nguyên', createdAt:'2026-04-09' },
-  { id:'LV004', employeeId:'E007', employeeName:'Nguyễn Văn Tuấn',      department:'Hacklike17', type:'annual',   startDate:'2026-04-21', endDate:'2026-04-22', days:2, status:'pending',  reason:'Nghỉ phép năm',         approver:'Văn Hoà Nguyên', createdAt:'2026-04-09' },
-  { id:'LV005', employeeId:'E002', employeeName:'Bùi Minh Phượng',      department:'Hacklike17', type:'sick',     startDate:'2026-04-02', endDate:'2026-04-03', days:2, status:'approved', reason:'Đau đầu, mệt mỏi',     approver:'Văn Hoà Nguyên', approvedDate:'2026-04-02', createdAt:'2026-04-02' },
-  { id:'LV006', employeeId:'E006', employeeName:'Nguyễn Mạnh Tiến',     department:'Hacklike17', type:'personal', startDate:'2026-04-28', endDate:'2026-04-28', days:1, status:'pending',  reason:'Đưa con đi khám bệnh', approver:'Văn Hoà Nguyên', createdAt:'2026-04-09' },
-]
 
 /* ═══════════════════════════════════════════════════
    RECRUITMENT

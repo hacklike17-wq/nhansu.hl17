@@ -2,7 +2,18 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { CreateEmployeeSchema } from "@/lib/schemas/employee"
 import bcrypt from "bcryptjs"
+import { randomBytes } from "crypto"
 import { requirePermission, requireSession, errorResponse } from "@/lib/permission"
+
+/**
+ * Generate a human-readable random password (base64url, 12 chars).
+ * Used when admin creates an employee with an account but doesn't supply a
+ * password — we return the generated value in the API response so the admin
+ * can share it out-of-band. Never store plaintext; we hash immediately.
+ */
+function generateRandomPassword(): string {
+  return randomBytes(9).toString("base64url").slice(0, 12)
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -91,6 +102,14 @@ export async function POST(req: NextRequest) {
     const startDate = new Date(data.startDate)
     const dob = data.dob ? new Date(data.dob) : null
 
+    // Resolve password upfront so we can return the generated value to
+    // the admin when none was supplied. Never reuse the literal "123456".
+    let plaintextPassword: string | null = null
+    if (data.accountStatus !== "NO_ACCOUNT") {
+      const supplied = data.accountPassword?.trim()
+      plaintextPassword = supplied && supplied.length >= 8 ? supplied : generateRandomPassword()
+    }
+
     // Atomic: create employee + user in a single transaction
     const employee = await db.$transaction(async (tx: any) => {
       const emp = await tx.employee.create({
@@ -120,9 +139,8 @@ export async function POST(req: NextRequest) {
         },
       })
 
-      if (data.accountStatus !== "NO_ACCOUNT") {
-        const rawPassword = data.accountPassword?.trim() || "123456"
-        const hashedPassword = await bcrypt.hash(rawPassword, 12)
+      if (plaintextPassword) {
+        const hashedPassword = await bcrypt.hash(plaintextPassword, 12)
         await tx.user.create({
           data: {
             email: data.email,
@@ -138,7 +156,10 @@ export async function POST(req: NextRequest) {
       return emp
     })
 
-    return NextResponse.json(employee, { status: 201 })
+    // Return plaintext password only when we generated it (so admin knows
+    // what to share). If admin supplied their own, don't echo it back.
+    const generatedPassword = plaintextPassword && !data.accountPassword?.trim() ? plaintextPassword : null
+    return NextResponse.json({ ...employee, generatedPassword }, { status: 201 })
   } catch (error: unknown) {
     if (error instanceof Error === false && error && typeof error === "object" && "code" in error) {
       const e = error as any

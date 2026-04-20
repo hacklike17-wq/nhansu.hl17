@@ -38,6 +38,15 @@ export async function POST(req: NextRequest) {
     if (!file) {
       return NextResponse.json({ error: "Thiếu file" }, { status: 400 })
     }
+    // File size cap — prevent xlsx-bomb / OOM DoS on the pm2 process. 5 MB
+    // is ~20× a typical monthly timesheet which is plenty of headroom.
+    const MAX_IMPORT_BYTES = 5 * 1024 * 1024
+    if (file.size > MAX_IMPORT_BYTES) {
+      return NextResponse.json(
+        { error: `File quá lớn (${(file.size / 1024 / 1024).toFixed(1)} MB) — tối đa 5 MB` },
+        { status: 400 }
+      )
+    }
     if (!month || !/^\d{4}-\d{2}$/.test(month)) {
       return NextResponse.json(
         { error: "Thiếu hoặc sai định dạng tháng (YYYY-MM)" },

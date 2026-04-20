@@ -6,7 +6,7 @@ import { z } from "zod"
 
 const Schema = z.object({
   oldPassword: z.string().min(1),
-  newPassword: z.string().min(6),
+  newPassword: z.string().min(8, "Mật khẩu tối thiểu 8 ký tự"),
 })
 
 export async function POST(req: NextRequest) {
