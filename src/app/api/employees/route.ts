@@ -21,6 +21,10 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const department = searchParams.get("department")
     const search = searchParams.get("search")
+    // `scope`: "active" (default — deletedAt IS NULL), "deleted" (only
+    // soft-deleted rows, admin-only — used by the "NV đã nghỉ" tab),
+    // "all" (both — rarely needed). Employees can only see themselves.
+    const scope = searchParams.get("scope") ?? "active"
 
     // Employees can only see their own record (e.g., for personal profile page)
     if (ctx.role === "employee") {
@@ -32,10 +36,22 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(me ? [me] : [])
     }
 
+    // Gate non-default scopes to admin-only (terminated employees have PII
+    // + payroll history that manager shouldn't casually view). `scope=all`
+    // also admin-only. Employees are already handled above.
+    if (scope !== "active" && ctx.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
+    const deletedFilter =
+      scope === "deleted" ? { deletedAt: { not: null } }
+      : scope === "all" ? {}
+      : { deletedAt: null }
+
     const employees = await db.employee.findMany({
       where: {
         companyId: ctx.companyId ?? undefined,
-        deletedAt: null,
+        ...deletedFilter,
         ...(department ? { department } : {}),
         ...(search
           ? {

@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react'
 import PageShell from '@/components/layout/PageShell'
 import { COMPANY_SETTINGS, SYSTEM_CONFIG, DEPARTMENTS } from '@/constants/data'
 import { useAuth } from '@/components/auth/AuthProvider'
-import { useEmployees, createEmployee, updateEmployee, deleteEmployee } from '@/hooks/useEmployees'
+import { useEmployees, createEmployee, updateEmployee, deleteEmployee, restoreEmployee } from '@/hooks/useEmployees'
 import { useSalaryColumns } from '@/hooks/useSalaryColumns'
 import { mutate as globalMutate } from 'swr'
 import { fmtVND, fmtDate } from '@/lib/format'
@@ -23,7 +23,12 @@ import { useColumnDragSort } from './_lib/useColumnDragSort'
 export default function CaiDatPage() {
   const { user } = useAuth()
   const [search, setSearch] = useState('')
-  const { employees, mutate: mutateEmps } = useEmployees({ search })
+  const [nhansuScope, setNhansuScope] = useState<'active' | 'deleted'>('active')
+  const { employees, mutate: mutateEmps } = useEmployees({ search, scope: nhansuScope })
+  const [restoreTarget, setRestoreTarget] = useState<any | null>(null)
+  const [restoring, setRestoring] = useState(false)
+  const [restorePassword, setRestorePassword] = useState('')
+  const [restoreResult, setRestoreResult] = useState<{ generatedPassword?: string | null } | null>(null)
   const { salaryColumns, isLoading: colsLoading, mutate: mutateCols } = useSalaryColumns()
 
   const [tab, setTab] = useState<'company' | 'system' | 'salary' | 'nhansu' | 'ai' | 'import' | 'attendance'>('company')
@@ -662,6 +667,21 @@ export default function CaiDatPage() {
 
       {tab === 'nhansu' && canSeeNhansu && (
         <div className="flex flex-col gap-4">
+          {/* Scope tabs: Active / Deleted */}
+          <div className="flex items-center gap-1 bg-gray-100 border border-gray-200 rounded-lg p-1 w-fit">
+            <button
+              onClick={() => setNhansuScope('active')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${nhansuScope === 'active' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+            >
+              Đang làm
+            </button>
+            <button
+              onClick={() => setNhansuScope('deleted')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${nhansuScope === 'deleted' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+            >
+              Đã nghỉ
+            </button>
+          </div>
           {/* Toolbar */}
           <div className="flex items-center justify-between gap-3">
             <div className="relative flex-1 max-w-xs">
@@ -669,10 +689,12 @@ export default function CaiDatPage() {
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Tìm nhân viên..."
                 className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
             </div>
-            <button onClick={openAdd}
-              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors">
-              <Plus size={13} /> Thêm nhân viên
-            </button>
+            {nhansuScope === 'active' && (
+              <button onClick={openAdd}
+                className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                <Plus size={13} /> Thêm nhân viên
+              </button>
+            )}
           </div>
 
           {/* Table */}
@@ -730,14 +752,25 @@ export default function CaiDatPage() {
                     <td className="px-4 py-3 text-center">{accountBadge(emp.accountStatus)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-1.5">
-                        <button onClick={() => openEdit(emp)}
-                          className="flex items-center gap-0.5 px-2 py-1 rounded-md text-blue-600 hover:bg-blue-50 transition-colors text-[11px]">
-                          <Pencil size={11} /> Sửa
-                        </button>
-                        <button onClick={() => setDeleteTarget(emp)}
-                          className="flex items-center gap-0.5 px-2 py-1 rounded-md text-red-500 hover:bg-red-50 transition-colors text-[11px]">
-                          <Trash2 size={11} /> Xóa
-                        </button>
+                        {nhansuScope === 'active' ? (
+                          <>
+                            <button onClick={() => openEdit(emp)}
+                              className="flex items-center gap-0.5 px-2 py-1 rounded-md text-blue-600 hover:bg-blue-50 transition-colors text-[11px]">
+                              <Pencil size={11} /> Sửa
+                            </button>
+                            <button onClick={() => setDeleteTarget(emp)}
+                              className="flex items-center gap-0.5 px-2 py-1 rounded-md text-red-500 hover:bg-red-50 transition-colors text-[11px]">
+                              <Trash2 size={11} /> Xóa
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => { setRestoreTarget(emp); setRestorePassword(''); setRestoreResult(null) }}
+                            className="flex items-center gap-0.5 px-2 py-1 rounded-md text-green-600 hover:bg-green-50 transition-colors text-[11px]"
+                          >
+                            <Check size={11} /> Khôi phục
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1113,7 +1146,7 @@ export default function CaiDatPage() {
               </div>
               <h3 className="text-sm font-bold text-gray-900 mb-1">Xác nhận xoá nhân viên</h3>
               <p className="text-xs text-gray-500">
-                Bạn có chắc muốn xoá <strong>{deleteTarget.fullName}</strong>? Hành động này không thể hoàn tác.
+                Bạn có chắc muốn cho <strong>{deleteTarget.fullName}</strong> nghỉ việc? NV sẽ bị khoá login ngay và biến mất khỏi danh sách. Dữ liệu lịch sử vẫn giữ — có thể khôi phục sau tại tab &quot;Đã nghỉ&quot;.
               </p>
             </div>
             <div className="flex border-t border-gray-100">
@@ -1123,6 +1156,91 @@ export default function CaiDatPage() {
               <button onClick={handleDelete} disabled={deleting} className="flex-1 py-3 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors border-l border-gray-100 rounded-br-2xl disabled:opacity-60">
                 {deleting ? 'Đang xoá...' : 'Xoá nhân viên'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {restoreTarget && (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={() => { if (!restoring) { setRestoreTarget(null); setRestoreResult(null) } }}>
+          <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-[440px]">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center shrink-0">
+                  <Check size={18} className="text-green-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900">Khôi phục nhân viên</h3>
+                  <p className="text-[11px] text-gray-500 mt-0.5">{restoreTarget.fullName} · {restoreTarget.email}</p>
+                </div>
+              </div>
+
+              {restoreResult ? (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-3">
+                  <div className="text-xs font-medium text-green-900 mb-1">✓ Đã khôi phục thành công</div>
+                  {restoreResult.generatedPassword ? (
+                    <div className="text-[11px] text-green-800">
+                      Mật khẩu mới (tự tạo, copy + chia sẻ cho NV):
+                      <div className="mt-1 font-mono bg-white px-2 py-1.5 rounded border border-green-200 text-[12px] select-all">
+                        {restoreResult.generatedPassword}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-green-800">NV có thể login với mật khẩu bạn vừa đặt.</div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="text-xs text-gray-600 mb-3 leading-relaxed">
+                    NV sẽ được phục hồi với status = WORKING + account mở lại. Cần đặt mật khẩu mới vì mật khẩu cũ đã bị xoá khi terminate.
+                  </div>
+                  <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+                    Mật khẩu mới (để trống = tự tạo random)
+                  </label>
+                  <input
+                    type="text"
+                    value={restorePassword}
+                    onChange={e => setRestorePassword(e.target.value)}
+                    placeholder="Tối thiểu 8 ký tự, hoặc để trống"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                  />
+                </>
+              )}
+            </div>
+            <div className="flex border-t border-gray-100">
+              <button
+                onClick={() => { setRestoreTarget(null); setRestoreResult(null); setRestorePassword('') }}
+                disabled={restoring}
+                className="flex-1 py-3 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors rounded-bl-2xl disabled:opacity-60"
+              >
+                {restoreResult ? 'Đóng' : 'Huỷ'}
+              </button>
+              {!restoreResult && (
+                <button
+                  onClick={async () => {
+                    setRestoring(true)
+                    try {
+                      const trimmed = restorePassword.trim()
+                      if (trimmed && trimmed.length < 8) {
+                        alert('Mật khẩu tối thiểu 8 ký tự')
+                        setRestoring(false)
+                        return
+                      }
+                      const res: any = await restoreEmployee(restoreTarget.id, trimmed || undefined)
+                      setRestoreResult({ generatedPassword: res?.generatedPassword ?? null })
+                      await mutateEmps()
+                    } catch (e: any) {
+                      alert(e?.message ?? 'Khôi phục thất bại')
+                    } finally {
+                      setRestoring(false)
+                    }
+                  }}
+                  disabled={restoring}
+                  className="flex-1 py-3 text-xs font-semibold text-green-600 hover:bg-green-50 transition-colors border-l border-gray-100 rounded-br-2xl disabled:opacity-60"
+                >
+                  {restoring ? 'Đang khôi phục...' : 'Khôi phục'}
+                </button>
+              )}
             </div>
           </div>
         </div>
