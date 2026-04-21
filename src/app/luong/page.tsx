@@ -31,6 +31,7 @@ function shiftMonth(ym: string, delta: number): string {
 export default function LuongPage() {
   const { user, hasPermission } = useAuth()
   const isManager = user?.role !== 'employee'
+  const isAdmin   = user?.role === 'admin'
   const canEdit   = isManager && hasPermission('luong.edit')
 
   const defaultMonth = new Date().toISOString().slice(0, 7)
@@ -221,12 +222,14 @@ export default function LuongPage() {
 
   const [statusModal, setStatusModal] = useState<{ id: string; name: string; current: string } | null>(null)
 
-  async function handleStatusChange(id: string, status: string) {
+  async function handleStatusChange(id: string, status: string, note?: string) {
     try {
-      await updatePayrollStatus(id, status as any)
+      await updatePayrollStatus(id, status as any, note)
       await mutate()
     } catch (e) {
       console.error('updatePayrollStatus error:', e)
+      alert((e as Error).message || 'Không thể cập nhật trạng thái')
+      return
     }
     setStatusModal(null)
   }
@@ -514,9 +517,33 @@ export default function LuongPage() {
                           </td>
                         )}
                         <td className="px-3 py-3 text-center">
-                          <span className={`inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_MAP[p.status]?.cls ?? ''}`}>
-                            {STATUS_MAP[p.status]?.label ?? p.status}
-                          </span>
+                          {(() => {
+                            const baseCls = STATUS_MAP[p.status]?.cls ?? ''
+                            const baseLabel = STATUS_MAP[p.status]?.label ?? p.status
+                            if (p.status !== 'PENDING' || !p.updatedAt) {
+                              return (
+                                <span className={`inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full ${baseCls}`}>
+                                  {baseLabel}
+                                </span>
+                              )
+                            }
+                            const days = Math.floor((Date.now() - new Date(p.updatedAt).getTime()) / 86400000)
+                            const stale = days >= 7
+                            const warn  = days >= 3 && days < 7
+                            const cls = stale
+                              ? 'bg-red-100 text-red-700'
+                              : warn
+                                ? 'bg-orange-100 text-orange-700'
+                                : baseCls
+                            return (
+                              <span
+                                title={`Gửi NV xác nhận cách đây ${days} ngày`}
+                                className={`inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full ${cls}`}
+                              >
+                                {baseLabel}{days > 0 && <> · {days}n</>}
+                              </span>
+                            )
+                          })()}
                         </td>
                         <td className="px-2 py-3 text-center">
                           <div className="flex items-center justify-center gap-1.5">
@@ -565,6 +592,7 @@ export default function LuongPage() {
       {statusModal && (
         <StatusModal
           state={statusModal}
+          isAdmin={isAdmin}
           onClose={() => setStatusModal(null)}
           onChange={handleStatusChange}
         />
