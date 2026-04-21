@@ -8,7 +8,7 @@ import { useDeductions } from '@/hooks/useDeductions'
 import { useKpiViolations, upsertKpiViolation } from '@/hooks/useKpiViolations'
 import { useOvertimeEntries, upsertOvertimeEntry } from '@/hooks/useOvertimeEntries'
 import type { KpiViolationType } from '@/types'
-import { X, Calendar, Trash2, Sparkles } from 'lucide-react'
+import { X, Calendar, Trash2, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   getDays,
   isWeekend,
@@ -40,6 +40,12 @@ const SR   = 'sticky z-10 border-l-2 border-gray-200 shadow-[-4px_0_8px_-2px_rgb
 // sticky-right Log col (Table 1 only, sits left of Tổng)
 const SRL_H = 'sticky z-20 bg-gray-50 border-l border-gray-100'
 const SRL   = 'sticky z-10 border-l border-gray-100'
+
+function shiftMonth(ym: string, delta: number): string {
+  const [y, m] = ym.split('-').map(Number)
+  const d = new Date(y, m - 1 + delta, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
 
 /* ═══════════════════════════════════════════════════
    PAGE COMPONENT
@@ -424,8 +430,24 @@ export default function ChamCongPage() {
       <div className="flex items-center gap-4 mb-3 flex-wrap">
         <div className="flex items-center gap-2">
           <label className="text-xs font-medium text-gray-400">Tháng</label>
-          <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-            className="border border-gray-200 rounded-lg px-2.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 h-8" />
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setMonth(shiftMonth(month, -1))}
+              aria-label="Tháng trước"
+              className="h-8 w-8 inline-flex items-center justify-center border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors">
+              <ChevronLeft size={14} />
+            </button>
+            <input type="month" value={month} onChange={e => setMonth(e.target.value)}
+              className="border border-gray-200 rounded-lg px-2.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 h-8" />
+            <button
+              type="button"
+              onClick={() => setMonth(shiftMonth(month, 1))}
+              aria-label="Tháng sau"
+              className="h-8 w-8 inline-flex items-center justify-center border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors">
+              <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
         {isManager && (() => {
           // Classify the selected month vs today (local) for context-aware UI

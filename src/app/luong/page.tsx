@@ -7,7 +7,7 @@ import { useEmployees } from '@/hooks/useEmployees'
 import { useSalaryColumns } from '@/hooks/useSalaryColumns'
 import { useCompanySettings } from '@/hooks/useCompanySettings'
 import { fmtVND } from '@/lib/format'
-import { X, RefreshCw, Plus, Trash2, Download, AlertTriangle, FileText, Pencil } from 'lucide-react'
+import { X, RefreshCw, Plus, Trash2, Download, AlertTriangle, FileText, Pencil, ChevronLeft, ChevronRight } from 'lucide-react'
 import { STATUS_MAP, COL_STYLE, MANUAL_INPUT_MAP } from './_lib/constants'
 import { buildRowVars, renderCell } from './_lib/row-helpers'
 import PersonalSalaryView from '@/components/payroll/PersonalSalaryView'
@@ -21,6 +21,12 @@ import SnapshotModal, { type Snapshot } from './_components/SnapshotModal'
 // render loop iterates all salary columns with generic string keys.
 import { ENTRY_COLUMN_LABELS } from '@/constants/salary-columns'
 const ENTRY_COLUMNS: Record<string, string | undefined> = ENTRY_COLUMN_LABELS
+
+function shiftMonth(ym: string, delta: number): string {
+  const [y, m] = ym.split('-').map(Number)
+  const d = new Date(y, m - 1 + delta, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
 
 export default function LuongPage() {
   const { user, hasPermission } = useAuth()
@@ -256,8 +262,24 @@ export default function LuongPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
           <label className="text-xs font-medium text-gray-500">Tháng</label>
-          <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setMonth(shiftMonth(month, -1))}
+              aria-label="Tháng trước"
+              className="h-9 w-9 inline-flex items-center justify-center border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors">
+              <ChevronLeft size={15} />
+            </button>
+            <input type="month" value={month} onChange={e => setMonth(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+            <button
+              type="button"
+              onClick={() => setMonth(shiftMonth(month, 1))}
+              aria-label="Tháng sau"
+              className="h-9 w-9 inline-flex items-center justify-center border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors">
+              <ChevronRight size={15} />
+            </button>
+          </div>
         </div>
         {canEdit && (
           <div className="flex items-center gap-2 flex-wrap">
