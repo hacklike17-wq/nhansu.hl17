@@ -11,7 +11,7 @@ export default function Topbar({ breadcrumb = 'Tổng quan', title }: TopbarProp
   const { openMobile } = useSidebar()
 
   return (
-    <div className="h-14 bg-white border-b border-gray-200 px-3 md:px-7 flex items-center justify-between shrink-0 gap-2">
+    <div className="sticky top-0 z-30 h-14 bg-white/95 backdrop-blur-sm border-b border-gray-200 px-3 md:px-7 flex items-center justify-between shrink-0 gap-2">
       <div className="flex items-center gap-2 min-w-0">
         {/* Hamburger — mobile only */}
         <button
