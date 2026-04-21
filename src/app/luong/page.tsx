@@ -7,7 +7,7 @@ import { useEmployees } from '@/hooks/useEmployees'
 import { useSalaryColumns } from '@/hooks/useSalaryColumns'
 import { useCompanySettings } from '@/hooks/useCompanySettings'
 import { fmtVND } from '@/lib/format'
-import { X, RefreshCw, Plus, Trash2, Download, AlertTriangle, FileText } from 'lucide-react'
+import { X, RefreshCw, Plus, Trash2, Download, AlertTriangle, FileText, Pencil } from 'lucide-react'
 import { STATUS_MAP, COL_STYLE, MANUAL_INPUT_MAP } from './_lib/constants'
 import { buildRowVars, renderCell } from './_lib/row-helpers'
 import PersonalSalaryView from '@/components/payroll/PersonalSalaryView'
@@ -368,15 +368,25 @@ export default function LuongPage() {
                       Nhân viên
                     </th>
                     {/* Dynamic: salary columns */}
-                    {salaryColumns.map(col => (
-                      <th key={col.key}
-                        className={`px-3 py-3 text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap text-right ${
-                          col.key === 'tong_thuc_nhan' ? 'text-blue-600' :
-                          COL_STYLE[col.key] === 'deduction' ? 'text-red-400' : 'text-gray-400'
-                        }`}>
-                        {col.name}
-                      </th>
-                    ))}
+                    {salaryColumns.map(col => {
+                      // Manual-input cột: hiện icon bút nhỏ cạnh tên cột để admin biết có thể click nhập.
+                      const isManualCol = col.type !== 'formula' &&
+                        (!!MANUAL_INPUT_MAP[col.key] || col.isEditable === true)
+                      return (
+                        <th key={col.key}
+                          className={`px-3 py-3 text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap text-right ${
+                            col.key === 'tong_thuc_nhan' ? 'text-blue-600' :
+                            COL_STYLE[col.key] === 'deduction' ? 'text-red-400' : 'text-gray-400'
+                          }`}>
+                          <span className="inline-flex items-center gap-1 justify-end">
+                            {col.name}
+                            {isManualCol && canEdit && (
+                              <Pencil size={9} className="text-amber-400" aria-label="Có thể nhập" />
+                            )}
+                          </span>
+                        </th>
+                      )
+                    })}
                     {/* Fixed: BH NV, Thuế, Status, Actions */}
                     {showBhCols && (
                       <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400 text-right whitespace-nowrap">BH NV</th>
@@ -452,13 +462,17 @@ export default function LuongPage() {
                                 <span onClick={() => setEntriesModal({ payrollId: p.id, columnKey: col.key as 'tien_phu_cap' | 'tien_tru_khac', label: ENTRY_COLUMNS[col.key] ?? col.key })}
                                   className="cursor-pointer hover:bg-blue-50 hover:text-blue-700 px-1 py-0.5 rounded transition-colors inline-block"
                                   title="Click để xem / sửa chi tiết">
-                                  {renderCell(col.key, raw)}
+                                  {raw === 0
+                                    ? <span className="text-blue-500 border-b border-dashed border-blue-300 text-[11px]">+ thêm</span>
+                                    : renderCell(col.key, raw)}
                                 </span>
                               ) : canEditCell ? (
                                 <span onClick={() => { setCellError(null); openCellEdit(p.id, col.key, raw) }}
                                   className="cursor-pointer hover:bg-amber-50 hover:text-amber-700 px-1 py-0.5 rounded transition-colors inline-block"
                                   title="Click để nhập giá trị">
-                                  {renderCell(col.key, raw)}
+                                  {raw === 0
+                                    ? <span className="text-amber-500 border-b border-dashed border-amber-300 text-[11px]">Nhập</span>
+                                    : renderCell(col.key, raw)}
                                 </span>
                               ) : (
                                 renderCell(col.key, raw)
