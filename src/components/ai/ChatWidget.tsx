@@ -377,7 +377,7 @@ export default function ChatWidget() {
         </button>
       )}
 
-      {/* Mobile backdrop — tap to close */}
+      {/* Mobile backdrop — tap ra ngoài để đóng */}
       {open && (
         <div
           onClick={() => setOpen(false)}
@@ -386,9 +386,9 @@ export default function ChatWidget() {
         />
       )}
 
-      {/* Chat panel */}
+      {/* Chat panel — mobile: anchor top + dvh để iOS keyboard co height đúng, không đẩy panel trôi. Giữ viền bo tròn với 8px margin quanh. */}
       {open && (
-        <div className="fixed inset-x-2 bottom-2 h-[85dvh] md:inset-auto md:bottom-10 md:right-8 z-50 md:w-[460px] md:h-[600px] bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="fixed inset-x-2 top-2 h-[calc(100dvh-1rem)] md:inset-auto md:top-auto md:bottom-10 md:right-8 md:h-[600px] md:w-[460px] z-50 bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-violet-600 to-blue-600 text-white">
             <div className="flex items-center gap-2 min-w-0">
