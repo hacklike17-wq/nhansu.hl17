@@ -74,15 +74,14 @@ export interface PayrollCalcResult {
  * Quy trình:
  *  1. Tổng công số nhận (WorkUnit.units)
  *  2. Tổng công số trừ đã APPROVED (DeductionEvent.delta)
- *  3. Lương công = baseSalary * netCong / 26
- *  4. Tăng ca  = baseSalary / 26 / 8 * totalOtHours * 1.5
- *  5. Lương trách nhiệm (employee.responsibilitySalary)
- *  6. Tiền ăn = netWorkUnits * 35,000
- *  7. Tiền phụ cấp / phạt / KPI từ SalaryValue tháng đó
- *  8. Gross = lương công + tăng ca + trách nhiệm + tiền ăn + phụ cấp - phạt - KPI
- *  9. BH nhân viên trên lương cơ bản (BHXH 8% + BHYT 1.5% + BHTN 1%)
- * 10. Thuế TNCN lũy tiến (giảm trừ gia cảnh 11M)
- * 11. Thực nhận = gross - BH - PIT
+ *  3. Lương công / tăng ca / tiền ăn — lấy từ formula cột lương tương ứng
+ *     (tong_luong_co_ban, tien_tang_ca, tien_an). Xoá cột khỏi cấu hình = 0.
+ *  4. Lương trách nhiệm (employee.responsibilitySalary)
+ *  5. Tiền phụ cấp / phạt / KPI từ SalaryValue tháng đó
+ *  6. Gross = lương công + tăng ca + trách nhiệm + tiền ăn + phụ cấp - phạt - KPI
+ *  7. BH nhân viên trên lương cơ bản (BHXH 8% + BHYT 1.5% + BHTN 1%)
+ *  8. Thuế TNCN lũy tiến (giảm trừ gia cảnh 11M)
+ *  9. Thực nhận = gross - BH - PIT
  *
  * Phase 01:  Formula columns evaluated in topological order (dep graph).
  * Phase 01b: Bad formulas return null → cascade detection → FormulaError[].
@@ -238,9 +237,12 @@ export async function calculatePayroll(
   }
 
   // ── Map formula results back to known fields ──────────────────
-  const workSalary  = vars["tong_luong_co_ban"]  ?? Math.round(baseSalary * netWorkUnits / 26)
-  const overtimePay = vars["tien_tang_ca"]        ?? Math.round(overtimeHours * hourlyRate * 1.5)
-  const mealPay     = vars["tien_an"]             ?? Math.round(netWorkUnits * 35_000)
+  // Nếu admin xoá cột khỏi cấu hình lương → không cộng ngầm (default 0).
+  // Trước đây có hardcoded fallback (baseSalary * cong / 26, cong * 35k, v.v.)
+  // khiến xoá cột vẫn âm thầm cộng vào gross — đã bỏ.
+  const workSalary  = vars["tong_luong_co_ban"]  ?? 0
+  const overtimePay = vars["tien_tang_ca"]        ?? 0
+  const mealPay     = vars["tien_an"]             ?? 0
 
   // ── Tổng phụ cấp & khấu trừ ──────────────────────────────────
   // KPI chuyên cần là tiền thưởng (dương), không phải khấu trừ

@@ -134,6 +134,8 @@ export default function PersonalSalaryView({
     () => (payroll ? buildRowVars(payroll, salaryColumns) : {}),
     [payroll, salaryColumns]
   )
+  // Dùng để ẩn dòng khi admin đã xoá cột đó khỏi cấu hình lương.
+  const hasCol = (key: string) => salaryColumns.some((c: any) => c.key === key)
 
   const { addTotal, subTotal } = useMemo(() => {
     if (!payroll) return { addTotal: 0, subTotal: 0 }
@@ -317,13 +319,13 @@ export default function PersonalSalaryView({
                 <LineRow label="Lương cơ bản"       value={num(payroll.baseSalary)} alwaysShow />
                 <LineRow label="Lương trách nhiệm"  value={num(payroll.responsibilitySalary)} />
                 <LineRow label="Công số"            value={num(payroll.netWorkUnits)} format="number" alwaysShow />
-                <LineRow label="Tổng lương CB"      value={num(payroll.workSalary)} alwaysShow />
-                <LineRow label="Tổng Lương TN"      value={vars['sum_luong_tn'] ?? 0} alwaysShow />
-                <LineRow label="Tiền tăng ca"       value={num(payroll.overtimePay)} alwaysShow />
-                <LineRow label="Tiền ăn"            value={num(payroll.mealPay)} alwaysShow />
-                <LineRow label="KPI chuyên cần"     value={num(payroll.kpiChuyenCan)} alwaysShow />
-                <LineRow label="KPI hiệu suất"      value={vars['kpi_hieu_suat'] ?? 0} alwaysShow />
-                <LineRow label="Tiền phụ cấp"       value={num(payroll.tienPhuCap)} alwaysShow onClick={num(payroll.tienPhuCap) ? () => setEntriesModal({ columnKey: 'tien_phu_cap', label: 'Tiền phụ cấp' }) : undefined} />
+                <LineRow label="Tổng lương CB"      value={num(payroll.workSalary)} alwaysShow={hasCol('tong_luong_co_ban')} />
+                <LineRow label="Tổng Lương TN"      value={vars['sum_luong_tn'] ?? 0} alwaysShow={hasCol('sum_luong_tn')} />
+                <LineRow label="Tiền tăng ca"       value={num(payroll.overtimePay)} alwaysShow={hasCol('tien_tang_ca')} />
+                <LineRow label="Tiền ăn"            value={num(payroll.mealPay)} alwaysShow={hasCol('tien_an')} />
+                <LineRow label="KPI chuyên cần"     value={num(payroll.kpiChuyenCan)} alwaysShow={hasCol('kpi_chuyen_can')} />
+                <LineRow label="KPI hiệu suất"      value={vars['kpi_hieu_suat'] ?? 0} alwaysShow={hasCol('kpi_hieu_suat')} />
+                <LineRow label="Tiền phụ cấp"       value={num(payroll.tienPhuCap)} alwaysShow={hasCol('tien_phu_cap')} onClick={num(payroll.tienPhuCap) ? () => setEntriesModal({ columnKey: 'tien_phu_cap', label: 'Tiền phụ cấp' }) : undefined} />
               </div>
               <div className="px-5 py-3 bg-green-50/40 border-t border-gray-100 flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Tổng tạm tính</span>
