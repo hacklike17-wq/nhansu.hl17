@@ -8,11 +8,11 @@ import type { CanonicalRole } from "@/constants/data"
  */
 
 /** Attendance KPI categories surfaced on the dashboard. */
-export const KPI_CATEGORIES = ["ĐM", "NP", "KL", "LT", "QCC"] as const
+export const KPI_CATEGORIES = ["ĐM", "NP", "KL", "LT", "QCC", "OL"] as const
 export type KpiCategory = (typeof KPI_CATEGORIES)[number]
 export type KpiBreakdown = Record<KpiCategory, number>
 
-const emptyKpiBreakdown = (): KpiBreakdown => ({ "ĐM": 0, NP: 0, KL: 0, LT: 0, QCC: 0 })
+const emptyKpiBreakdown = (): KpiBreakdown => ({ "ĐM": 0, NP: 0, KL: 0, LT: 0, QCC: 0, OL: 0 })
 
 /**
  * Aggregate KPI violation counts for the current month.

@@ -74,6 +74,7 @@ export const KPI_CONFIG: Record<KpiViolationType, { full: string; cls: string; d
   KL:    { full: "Nghỉ không lương", cls: "bg-rose-100 text-rose-800 border-rose-200",       dot: "bg-rose-500"   },
   LT:    { full: "Nghỉ Lễ tết",      cls: "bg-emerald-100 text-emerald-700 border-emerald-200", dot: "bg-emerald-400" },
   QCC:   { full: "Quên chấm công",   cls: "bg-orange-100 text-orange-700 border-orange-200", dot: "bg-orange-400" },
+  OL:    { full: "Làm Online",       cls: "bg-teal-100 text-teal-700 border-teal-200",       dot: "bg-teal-400"   },
 }
 
 export const KPI_TYPES = Object.keys(KPI_CONFIG) as KpiViolationType[]

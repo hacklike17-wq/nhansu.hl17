@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   Ban,
   HelpCircle,
+  Laptop,
   RefreshCw,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -25,6 +26,7 @@ const CARDS: Card[] = [
   { code: 'KL',  label: 'Nghỉ không lương', icon: <Ban size={16}/>,           cls: 'bg-rose-50 text-rose-700 border-rose-200' },
   { code: 'LT',  label: 'Nghỉ Lễ tết',      icon: <AlertTriangle size={16}/>, cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   { code: 'QCC', label: 'Quên chấm công',   icon: <HelpCircle size={16}/>,    cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+  { code: 'OL',  label: 'Làm Online',        icon: <Laptop size={16}/>,        cls: 'bg-teal-50 text-teal-700 border-teal-200' },
 ]
 
 type ApiResponse = {
@@ -72,7 +74,7 @@ export default function AttendanceKpiPanel({
     }
   )
 
-  const tally: KpiBreakdown = data?.tally ?? initialKpi ?? { "ĐM": 0, NP: 0, KL: 0, LT: 0, QCC: 0 }
+  const tally: KpiBreakdown = data?.tally ?? initialKpi ?? { "ĐM": 0, NP: 0, KL: 0, LT: 0, QCC: 0, OL: 0 }
   const totalRows = data?.totalRows ?? 0
   const scopeLabel =
     data?.scope === 'self'
@@ -113,7 +115,7 @@ export default function AttendanceKpiPanel({
         <div className="text-[11px] text-red-500 mb-2">Lỗi tải dữ liệu KPI</div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
         {CARDS.map(c => (
           <div
             key={c.code}

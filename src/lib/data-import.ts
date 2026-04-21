@@ -374,7 +374,7 @@ export function planKpiImport(
     dc => dc.date >= ctx.monthStart && dc.date <= ctx.monthEnd
   )
 
-  const VALID_CODES = new Set(["ĐM", "NP", "KL", "LT", "QCC"])
+  const VALID_CODES = new Set(["ĐM", "NP", "KL", "LT", "QCC", "OL"])
 
   for (const cell of parsed.cells) {
     const v = validateEmpDate(cell.empCode, cell.date, ctx)
