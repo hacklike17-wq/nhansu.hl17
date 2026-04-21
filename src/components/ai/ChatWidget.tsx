@@ -377,9 +377,18 @@ export default function ChatWidget() {
         </button>
       )}
 
+      {/* Mobile backdrop — tap to close */}
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          className="md:hidden fixed inset-0 z-40 bg-black/30"
+          aria-hidden="true"
+        />
+      )}
+
       {/* Chat panel */}
       {open && (
-        <div className="fixed inset-2 md:inset-auto md:bottom-10 md:right-8 z-50 md:w-[460px] md:h-[600px] bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="fixed inset-x-2 bottom-2 h-[85dvh] md:inset-auto md:bottom-10 md:right-8 z-50 md:w-[460px] md:h-[600px] bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-violet-600 to-blue-600 text-white">
             <div className="flex items-center gap-2 min-w-0">
@@ -603,7 +612,7 @@ export default function ChatWidget() {
                   placeholder="Nhập câu hỏi... (Enter gửi, Shift+Enter xuống dòng)"
                   rows={1}
                   disabled={sending}
-                  className="flex-1 resize-none text-[13px] leading-relaxed border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 disabled:opacity-50 overflow-y-auto"
+                  className="flex-1 resize-none text-base md:text-[13px] leading-relaxed border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 disabled:opacity-50 overflow-y-auto"
                 />
                 <button
                   onClick={send}
