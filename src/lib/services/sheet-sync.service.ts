@@ -39,6 +39,20 @@ export type SyncRowsAffected = {
   skippedLocked: number
   /** Rows preserved because the existing WorkUnit row has a manager's note. */
   preservedNotes: number
+  /**
+   * Peak heapUsed (MB) seen during the sync. Added 2026-04-24 after the
+   * cron OOM incident — lets us watch for regressions without rolling a new
+   * deploy just to add logs.
+   */
+  heapPeakMB?: number
+}
+
+function logHeap(stage: string, companyId: string, peakRef: { v: number }): void {
+  const m = process.memoryUsage()
+  const heapMB = Math.round(m.heapUsed / 1024 / 1024)
+  const rssMB = Math.round(m.rss / 1024 / 1024)
+  if (heapMB > peakRef.v) peakRef.v = heapMB
+  console.log(`[sheet-sync] ${companyId} ${stage} heap=${heapMB}MB rss=${rssMB}MB`)
 }
 
 export type SyncResult = {
@@ -117,6 +131,7 @@ export async function syncSheetForCompany(params: {
   const { companyId, sheetUrl, sheetMonth, syncedBy } = params
   const startTime = Date.now()
   const lockKey = companyLockKey(companyId)
+  const heapPeak = { v: 0 }
 
   const gotLock = await tryAdvisoryLock(lockKey)
   if (!gotLock) {
@@ -137,11 +152,13 @@ export async function syncSheetForCompany(params: {
   const warnings: string[] = []
 
   try {
+    logHeap("start", companyId, heapPeak)
     const { monthStart, monthEnd } = monthBoundaries(sheetMonth)
 
     // --- Fetch + parse sheet ---
     const wb = await fetchSheetWorkbook(sheetUrl)
     const tabs = findTabs(wb)
+    logHeap("after-fetch-parse", companyId, heapPeak)
 
     if (!tabs.workUnit && !tabs.overtime && !tabs.kpi) {
       throw new SyncError(
@@ -170,6 +187,7 @@ export async function syncSheetForCompany(params: {
     )
 
     const ctx: ImportCtx = { codeToEmp, lockedEmpIds, monthStart, monthEnd }
+    logHeap("after-ctx-loaded", companyId, heapPeak)
 
     // --- Sync WorkUnit tab ---
     if (tabs.workUnit) {
@@ -232,6 +250,7 @@ export async function syncSheetForCompany(params: {
     } else {
       warnings.push("Tab 'BANG CHAM CONG' không tìm thấy")
     }
+    logHeap("after-workunit-upsert", companyId, heapPeak)
 
     // --- Sync Overtime tab ---
     if (tabs.overtime) {
@@ -278,6 +297,7 @@ export async function syncSheetForCompany(params: {
     } else {
       warnings.push("Tab 'CC thêm giờ' không tìm thấy")
     }
+    logHeap("after-overtime-upsert", companyId, heapPeak)
 
     // --- Sync KPI tab ---
     if (tabs.kpi) {
@@ -323,12 +343,15 @@ export async function syncSheetForCompany(params: {
     } else {
       warnings.push("Tab 'BẢNG THEO DÕI KP CC' không tìm thấy")
     }
+    logHeap("after-kpi-upsert", companyId, heapPeak)
 
     // --- Recalc DRAFT payrolls (fire-and-forget) ---
     recalculateMonth(companyId, monthStart).catch(e =>
       console.warn("sheet-sync: recalculateMonth failed", e)
     )
 
+    logHeap("end", companyId, heapPeak)
+    rowsAffected.heapPeakMB = heapPeak.v
     const durationMs = Date.now() - startTime
     await db.sheetSyncLog.create({
       data: {
@@ -345,6 +368,8 @@ export async function syncSheetForCompany(params: {
 
     return { status: "ok", durationMs, rowsAffected, warnings }
   } catch (e) {
+    logHeap("error", companyId, heapPeak)
+    rowsAffected.heapPeakMB = heapPeak.v
     const durationMs = Date.now() - startTime
     const message =
       e instanceof SyncError || e instanceof SheetFetchError
