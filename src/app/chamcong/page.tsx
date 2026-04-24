@@ -13,6 +13,7 @@ import {
   getDays,
   isWeekend,
   dayNum,
+  dayOfWeek,
   toDateStr,
   attCls,
   attLabel,
@@ -408,8 +409,21 @@ export default function ChamCongPage() {
     return (
       <>
         {days.map(date => (
-          <th key={date} className={`${COL_W} py-2.5 text-center text-[11px] font-semibold ${isWeekend(date) ? 'text-gray-300' : 'text-gray-400'}`}>
+          <th key={date} className={`${COL_W} pt-2 pb-0.5 text-center text-[11px] font-semibold ${isWeekend(date) ? 'text-gray-300' : 'text-gray-400'}`}>
             {dayNum(date)}
+          </th>
+        ))}
+      </>
+    )
+  }
+
+  /* ── Hàng 2 của header: thứ trong tuần (T2–T7, CN). CN tô đỏ. ── */
+  function DayOfWeekHeaders() {
+    return (
+      <>
+        {days.map(date => (
+          <th key={date} className={`${COL_W} pt-0 pb-2 text-center text-[10px] font-semibold ${isWeekend(date) ? 'text-rose-500' : 'text-gray-400'}`}>
+            {dayOfWeek(date)}
           </th>
         ))}
       </>
@@ -540,13 +554,16 @@ export default function ChamCongPage() {
             <table className="text-[12px] border-collapse table-fixed w-full">
               <TableCols extraCols={isManager ? [LOG_W, TOT_W] : [TOT_W]} />
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className={`${STICKY_H} px-3 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide`}>Nhân viên</th>
+                <tr className="bg-gray-50">
+                  <th rowSpan={2} className={`${STICKY_H} px-3 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide`}>Nhân viên</th>
                   <DayHeaders />
-                  {isManager && <th className={`${SRL_H} px-2 py-2 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap`}
+                  {isManager && <th rowSpan={2} className={`${SRL_H} px-2 py-2 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap`}
                     style={{ right: TOT_W, width: LOG_W }}>Log</th>}
-                  <th className={`${SR_H} right-0 px-2 py-2 text-right text-[11px] font-bold text-gray-600 uppercase tracking-wide whitespace-nowrap`}
+                  <th rowSpan={2} className={`${SR_H} right-0 px-2 py-2 text-right text-[11px] font-bold text-gray-600 uppercase tracking-wide whitespace-nowrap`}
                     style={{ right: 0, width: TOT_W }}>Tổng</th>
+                </tr>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <DayOfWeekHeaders />
                 </tr>
               </thead>
               <tbody>
@@ -619,13 +636,16 @@ export default function ChamCongPage() {
             <table className="text-[12px] border-collapse table-fixed w-full">
               <TableCols extraCols={isManager ? [LOG_W, TOT_W] : [TOT_W]} />
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className={`${STICKY_H} px-3 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide`}>Nhân viên</th>
+                <tr className="bg-gray-50">
+                  <th rowSpan={2} className={`${STICKY_H} px-3 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide`}>Nhân viên</th>
                   <DayHeaders />
-                  {isManager && <th className={`${SRL_H} px-2 py-2 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap`}
+                  {isManager && <th rowSpan={2} className={`${SRL_H} px-2 py-2 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap`}
                     style={{ right: TOT_W, width: LOG_W }}>Log</th>}
-                  <th className={`${SR_H} right-0 px-2 py-2 text-right text-[11px] font-bold text-gray-600 uppercase tracking-wide whitespace-nowrap`}
+                  <th rowSpan={2} className={`${SR_H} right-0 px-2 py-2 text-right text-[11px] font-bold text-gray-600 uppercase tracking-wide whitespace-nowrap`}
                     style={{ right: 0, width: TOT_W }}>Tổng</th>
+                </tr>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <DayOfWeekHeaders />
                 </tr>
               </thead>
               <tbody>
@@ -701,17 +721,20 @@ export default function ChamCongPage() {
             <table className="text-[12px] border-collapse table-fixed w-full">
               <TableCols extraCols={isManager ? [LOG_W, TOT_W] : [TOT_W]} />
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className={`${STICKY_H} px-3 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide`}>
+                <tr className="bg-gray-50">
+                  <th rowSpan={2} className={`${STICKY_H} px-3 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide`}>
                     Nhân viên
                   </th>
                   <DayHeaders />
-                  {isManager && <th className={`${SRL_H} px-2 py-2 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap`}
+                  {isManager && <th rowSpan={2} className={`${SRL_H} px-2 py-2 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap`}
                     style={{ right: TOT_W, width: LOG_W }}>Log</th>}
-                  <th className={`${SR_H} right-0 px-2 py-2 text-right text-[11px] font-bold text-gray-600 uppercase tracking-wide whitespace-nowrap`}
+                  <th rowSpan={2} className={`${SR_H} right-0 px-2 py-2 text-right text-[11px] font-bold text-gray-600 uppercase tracking-wide whitespace-nowrap`}
                     style={{ right: 0, width: TOT_W }}>
                     Vi phạm
                   </th>
+                </tr>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <DayOfWeekHeaders />
                 </tr>
               </thead>
               <tbody>

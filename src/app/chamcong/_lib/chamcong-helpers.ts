@@ -30,6 +30,14 @@ export function dayNum(date: string): string {
   return date.slice(8)
 }
 
+const DOW_LABELS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"]
+
+/** Trả về nhãn thứ-trong-tuần kiểu VN: "T2"..."T7", "CN". */
+export function dayOfWeek(date: string): string {
+  const dow = new Date(date + "T00:00:00").getDay()
+  return DOW_LABELS[dow]
+}
+
 /** Normalize date from DB (may be ISO string or Date) to YYYY-MM-DD. */
 export function toDateStr(d: string | Date): string {
   if (typeof d === "string") return d.slice(0, 10)
