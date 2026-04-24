@@ -15,8 +15,7 @@
  *
  * The route commits only when `errors.length === 0` and the user confirms.
  */
-import type ExcelJS from "exceljs"
-import { parseMatrixSheet } from "./excel-io"
+import { parseMatrixSheet, type WorksheetLike } from "./excel-io"
 
 export type ImportCtx = {
   /** Map of employee `code` → { id, fullName, startDate, endDate } from DB. */
@@ -170,7 +169,7 @@ export const WORK_UNIT_CODE_MAP: Record<string, { units: number; note: string }>
  *                                                     fallback, per user spec)
  */
 export function planWorkUnitsImport(
-  ws: ExcelJS.Worksheet,
+  ws: WorksheetLike,
   ctx: ImportCtx
 ): ImportPlan<WorkUnitRow> {
   const parsed = parseMatrixSheet(ws, { year: ctx.monthStart.getUTCFullYear(), month: ctx.monthStart.getUTCMonth() + 1 })
@@ -264,7 +263,7 @@ export function planWorkUnitsImport(
  *   - anything else                    → row error
  */
 export function planOvertimeImport(
-  ws: ExcelJS.Worksheet,
+  ws: WorksheetLike,
   ctx: ImportCtx
 ): ImportPlan<OvertimeRow> {
   const parsed = parseMatrixSheet(ws, { year: ctx.monthStart.getUTCFullYear(), month: ctx.monthStart.getUTCMonth() + 1 })
@@ -359,7 +358,7 @@ export function planOvertimeImport(
  *   - Multi-code strings like "ĐM,KL" → parse as array of known codes.
  */
 export function planKpiImport(
-  ws: ExcelJS.Worksheet,
+  ws: WorksheetLike,
   ctx: ImportCtx
 ): ImportPlan<KpiRow> {
   const parsed = parseMatrixSheet(ws, { year: ctx.monthStart.getUTCFullYear(), month: ctx.monthStart.getUTCMonth() + 1 })

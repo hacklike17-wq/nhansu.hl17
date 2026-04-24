@@ -30,6 +30,54 @@ export type ParseResult<T> = {
   errors: Array<{ row: number; col?: number; message: string }>
 }
 
+/**
+ * Minimal worksheet interface used by findHeaderRow / resolveColumnLayout /
+ * parseMatrixSheet. ExcelJS.Worksheet satisfies this structurally, and
+ * `aoaToWorksheetLike()` provides a SheetJS-backed implementation for the
+ * memory-sensitive sheet-sync path. Keeping this narrow means we can swap
+ * parsers without touching the planner layer.
+ */
+export interface WorksheetLike {
+  name: string
+  rowCount: number
+  columnCount: number
+  getRow(r: number): { getCell(c: number): { value: unknown } }
+}
+
+/**
+ * Wrap a SheetJS array-of-arrays (from `XLSX.utils.sheet_to_json(ws, {header:1})`)
+ * in the `WorksheetLike` shape expected by parseMatrixSheet. The returned cell
+ * `.value` is already a primitive (number / string / Date / null) so
+ * `unwrapCellValue` is a no-op on this path, which is fine.
+ */
+export function aoaToWorksheetLike(name: string, aoa: unknown[][]): WorksheetLike {
+  let cachedCols = -1
+  return {
+    name,
+    get rowCount() {
+      return aoa.length
+    },
+    get columnCount() {
+      if (cachedCols < 0) {
+        let max = 0
+        for (const r of aoa) {
+          if (Array.isArray(r) && r.length > max) max = r.length
+        }
+        cachedCols = max
+      }
+      return cachedCols
+    },
+    getRow(r: number) {
+      const row = (aoa[r - 1] as unknown[] | undefined) ?? []
+      return {
+        getCell(c: number) {
+          return { value: row[c - 1] ?? null }
+        },
+      }
+    },
+  }
+}
+
 // ─── Reading ──────────────────────────────────────────────────────────────────
 
 export async function readWorkbookFromBuffer(
@@ -77,7 +125,7 @@ export function unwrapCellValue(v: unknown): unknown {
   return v
 }
 
-export function findHeaderRow(ws: ExcelJS.Worksheet, maxScan = 20): number {
+export function findHeaderRow(ws: WorksheetLike, maxScan = 20): number {
   const normalize = (s: string) =>
     s
       .normalize("NFD")
@@ -115,7 +163,7 @@ export function findHeaderRow(ws: ExcelJS.Worksheet, maxScan = 20): number {
  * robust against that kind of template corruption.
  */
 export function resolveColumnLayout(
-  ws: ExcelJS.Worksheet,
+  ws: WorksheetLike,
   headerRow: number,
   monthHint: { year: number; month: number } // month = 1-12
 ): {
@@ -186,7 +234,7 @@ export function resolveColumnLayout(
  * numbers. See `resolveColumnLayout` for the full extraction strategy.
  */
 export function parseMatrixSheet(
-  ws: ExcelJS.Worksheet,
+  ws: WorksheetLike,
   monthHint: { year: number; month: number }
 ): {
   headerRow: number

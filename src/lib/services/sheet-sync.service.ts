@@ -27,8 +27,7 @@ import { db } from "@/lib/db"
 import { lockedEmployeeIdsForMonth } from "@/lib/chamcong-guard"
 import { recalculateMonth } from "@/lib/services/payroll.service"
 import {
-  fetchSheetWorkbook,
-  findTabs,
+  fetchSheetTabsCompact,
   SheetFetchError,
 } from "@/lib/google-sheet-fetcher"
 import {
@@ -450,11 +449,10 @@ export async function syncSheetForCompany(params: {
     const ctx: ImportCtx = { codeToEmp, lockedEmpIds, monthStart, monthEnd }
     logHeap("after-ctx-loaded", companyId, heapPeak)
 
-    // --- Parse phase (scoped IIFE so ExcelJS workbook + tabs are eligible
-    // for GC before the slow per-tab DB writes start) ---
+    // --- Parse phase (scoped IIFE so SheetJS workbook + AoA tabs are
+    // eligible for GC before the slow per-tab DB writes start) ---
     const { workUnitPlan, overtimePlan, kpiPlan } = await (async () => {
-      const wb = await fetchSheetWorkbook(sheetUrl)
-      const tabs = findTabs(wb)
+      const tabs = await fetchSheetTabsCompact(sheetUrl)
       logHeap("after-fetch", companyId, heapPeak)
 
       if (!tabs.workUnit && !tabs.overtime && !tabs.kpi) {
@@ -477,8 +475,8 @@ export async function syncSheetForCompany(params: {
 
       return { workUnitPlan, overtimePlan, kpiPlan }
     })()
-    // wb + tabs are out of scope now; next major GC cycle can reclaim them
-    // while we're waiting on DB IO below.
+    // tabs + AoA refs are out of scope now; next major GC cycle can reclaim
+    // them while we're waiting on DB IO below.
     logHeap("after-release", companyId, heapPeak)
 
     // --- Validate all plans before touching the DB ---
