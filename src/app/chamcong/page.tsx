@@ -404,12 +404,13 @@ export default function ChamCongPage() {
     )
   }
 
-  /* ── Shared th for day columns ── */
-  function DayHeaders() {
+  /* ── Shared th for day columns. compact=true khi có hàng DayOfWeekHeaders đi kèm bên dưới (chỉ Bảng công số). ── */
+  function DayHeaders({ compact = false }: { compact?: boolean }) {
+    const pad = compact ? 'pt-2 pb-0.5' : 'py-2.5'
     return (
       <>
         {days.map(date => (
-          <th key={date} className={`${COL_W} pt-2 pb-0.5 text-center text-[11px] font-semibold ${isWeekend(date) ? 'text-gray-300' : 'text-gray-400'}`}>
+          <th key={date} className={`${COL_W} ${pad} text-center text-[11px] font-semibold ${isWeekend(date) ? 'text-gray-300' : 'text-gray-400'}`}>
             {dayNum(date)}
           </th>
         ))}
@@ -463,7 +464,8 @@ export default function ChamCongPage() {
             </button>
           </div>
         </div>
-        {isManager && (() => {
+        {/* Nút "Cập nhật công đến hôm nay" đang ẩn theo yêu cầu — handler handleInitMonth + state initializing vẫn giữ phòng khi bật lại. */}
+        {false && isManager && (() => {
           // Classify the selected month vs today (local) for context-aware UI
           const todayYm = new Date().toISOString().slice(0, 7) // "YYYY-MM"
           const isFuture = month > todayYm
@@ -556,7 +558,7 @@ export default function ChamCongPage() {
               <thead>
                 <tr className="bg-gray-50">
                   <th rowSpan={2} className={`${STICKY_H} px-3 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide`}>Nhân viên</th>
-                  <DayHeaders />
+                  <DayHeaders compact />
                   {isManager && <th rowSpan={2} className={`${SRL_H} px-2 py-2 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap`}
                     style={{ right: TOT_W, width: LOG_W }}>Log</th>}
                   <th rowSpan={2} className={`${SR_H} right-0 px-2 py-2 text-right text-[11px] font-bold text-gray-600 uppercase tracking-wide whitespace-nowrap`}
@@ -636,16 +638,13 @@ export default function ChamCongPage() {
             <table className="text-[12px] border-collapse table-fixed w-full">
               <TableCols extraCols={isManager ? [LOG_W, TOT_W] : [TOT_W]} />
               <thead>
-                <tr className="bg-gray-50">
-                  <th rowSpan={2} className={`${STICKY_H} px-3 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide`}>Nhân viên</th>
-                  <DayHeaders />
-                  {isManager && <th rowSpan={2} className={`${SRL_H} px-2 py-2 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap`}
-                    style={{ right: TOT_W, width: LOG_W }}>Log</th>}
-                  <th rowSpan={2} className={`${SR_H} right-0 px-2 py-2 text-right text-[11px] font-bold text-gray-600 uppercase tracking-wide whitespace-nowrap`}
-                    style={{ right: 0, width: TOT_W }}>Tổng</th>
-                </tr>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <DayOfWeekHeaders />
+                  <th className={`${STICKY_H} px-3 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide`}>Nhân viên</th>
+                  <DayHeaders />
+                  {isManager && <th className={`${SRL_H} px-2 py-2 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap`}
+                    style={{ right: TOT_W, width: LOG_W }}>Log</th>}
+                  <th className={`${SR_H} right-0 px-2 py-2 text-right text-[11px] font-bold text-gray-600 uppercase tracking-wide whitespace-nowrap`}
+                    style={{ right: 0, width: TOT_W }}>Tổng</th>
                 </tr>
               </thead>
               <tbody>
@@ -721,20 +720,17 @@ export default function ChamCongPage() {
             <table className="text-[12px] border-collapse table-fixed w-full">
               <TableCols extraCols={isManager ? [LOG_W, TOT_W] : [TOT_W]} />
               <thead>
-                <tr className="bg-gray-50">
-                  <th rowSpan={2} className={`${STICKY_H} px-3 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide`}>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className={`${STICKY_H} px-3 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide`}>
                     Nhân viên
                   </th>
                   <DayHeaders />
-                  {isManager && <th rowSpan={2} className={`${SRL_H} px-2 py-2 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap`}
+                  {isManager && <th className={`${SRL_H} px-2 py-2 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap`}
                     style={{ right: TOT_W, width: LOG_W }}>Log</th>}
-                  <th rowSpan={2} className={`${SR_H} right-0 px-2 py-2 text-right text-[11px] font-bold text-gray-600 uppercase tracking-wide whitespace-nowrap`}
+                  <th className={`${SR_H} right-0 px-2 py-2 text-right text-[11px] font-bold text-gray-600 uppercase tracking-wide whitespace-nowrap`}
                     style={{ right: 0, width: TOT_W }}>
                     Vi phạm
                   </th>
-                </tr>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <DayOfWeekHeaders />
                 </tr>
               </thead>
               <tbody>
