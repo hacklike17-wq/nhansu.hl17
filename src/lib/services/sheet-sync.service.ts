@@ -13,6 +13,15 @@
  *                  with MONTH_MISMATCH.
  *  Q11 (missing):  each of the 3 tabs is optional — missing = warning only.
  *  Q15 (concurrent): advisory lock per companyId prevents parallel runs.
+ *
+ * Memory strategy (Tier 2, 2026-04-24):
+ *  - Parse phase runs inside an IIFE scope so the ExcelJS workbook + tabs
+ *    go out of scope before DB writes; V8 can reclaim ~hundreds of MB of
+ *    cell/style metadata while the slow per-row network IO is happening.
+ *  - DB writes are batched: one createMany + one chunked $transaction per
+ *    tab instead of N sequential awaits. Cuts Prisma allocation pressure
+ *    and shrinks the end-to-end duration window during which a concurrent
+ *    cron tick could pile on.
  */
 import { db } from "@/lib/db"
 import { lockedEmployeeIdsForMonth } from "@/lib/chamcong-guard"
@@ -27,6 +36,10 @@ import {
   planOvertimeImport,
   planKpiImport,
   type ImportCtx,
+  type ImportPlan,
+  type WorkUnitRow,
+  type OvertimeRow,
+  type KpiRow,
 } from "@/lib/data-import"
 
 export type SyncRowsAffected = {
@@ -114,6 +127,267 @@ async function releaseAdvisoryLock(key: { k1: number; k2: number }): Promise<voi
   )
 }
 
+const UPDATE_CHUNK_SIZE = 100
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
+/** Validate monthMatches + errors on a plan, or throw SyncError. */
+function assertPlanValid<T>(plan: ImportPlan<T>, sheetName: string, sheetMonth: string): void {
+  if (!plan.monthMatches) {
+    throw new SyncError(
+      "MONTH_MISMATCH",
+      `Tab '${sheetName}' chứa ngày không thuộc tháng ${sheetMonth}`
+    )
+  }
+  if (plan.errors.length > 0) {
+    throw new SyncError(
+      "PARSE_ERROR",
+      `Tab '${sheetName}' có lỗi: ${plan.errors[0].message}`
+    )
+  }
+}
+
+/**
+ * Batch-write WorkUnits: fetches existing rows for the month in one query,
+ * partitions `plan.upserts` into preserve / update / create buckets, then
+ * executes one `createMany` + one chunked `$transaction` of updates.
+ */
+async function writeWorkUnits(params: {
+  companyId: string
+  syncedBy: string
+  plan: ImportPlan<WorkUnitRow>
+  monthStart: Date
+  monthEnd: Date
+  rowsAffected: SyncRowsAffected
+}): Promise<void> {
+  const { companyId, syncedBy, plan, monthStart, monthEnd, rowsAffected } = params
+
+  // Count skipped from parser reasons regardless of write outcome.
+  for (const s of plan.skipped) {
+    if (s.reason.includes("không tồn tại")) rowsAffected.skippedEmps++
+    else if (s.reason.includes("bảng lương")) rowsAffected.skippedLocked++
+  }
+
+  if (plan.upserts.length === 0) return
+
+  const existing = await db.workUnit.findMany({
+    where: {
+      companyId,
+      employeeId: { in: plan.upserts.map(u => u.employeeId) },
+      date: { gte: monthStart, lte: monthEnd },
+    },
+    select: { id: true, employeeId: true, date: true, note: true },
+  })
+  const existingByKey = new Map(
+    existing.map(e => [`${e.employeeId}|${isoDate(e.date as Date)}`, e])
+  )
+
+  const creates: Array<{
+    companyId: string
+    employeeId: string
+    date: Date
+    units: number
+    note: string | null
+    source: string
+    sourceBy: string
+  }> = []
+  const updates: Array<{ id: string; units: number; note: string | null }> = []
+
+  for (const row of plan.upserts) {
+    const key = `${row.employeeId}|${isoDate(row.date)}`
+    const ex = existingByKey.get(key)
+    if (ex?.note) {
+      rowsAffected.preservedNotes++
+      continue
+    }
+    if (ex) {
+      updates.push({ id: ex.id, units: row.units, note: row.note })
+    } else {
+      creates.push({
+        companyId,
+        employeeId: row.employeeId,
+        date: row.date,
+        units: row.units,
+        note: row.note,
+        source: "SHEET_SYNC",
+        sourceBy: syncedBy,
+      })
+    }
+    rowsAffected.workUnit++
+  }
+
+  if (creates.length > 0) {
+    await db.workUnit.createMany({ data: creates })
+  }
+  for (let i = 0; i < updates.length; i += UPDATE_CHUNK_SIZE) {
+    const chunk = updates.slice(i, i + UPDATE_CHUNK_SIZE)
+    await db.$transaction(
+      chunk.map(u =>
+        db.workUnit.update({
+          where: { id: u.id },
+          data: {
+            units: u.units,
+            note: u.note,
+            source: "SHEET_SYNC",
+            sourceBy: syncedBy,
+          },
+        })
+      )
+    )
+  }
+}
+
+/** Batch-write OvertimeEntry — no unique constraint, so partition by a
+ *  pre-fetched existing-rows map and split into createMany + update chunks. */
+async function writeOvertime(params: {
+  companyId: string
+  syncedBy: string
+  plan: ImportPlan<OvertimeRow>
+  monthStart: Date
+  monthEnd: Date
+  rowsAffected: SyncRowsAffected
+}): Promise<void> {
+  const { companyId, syncedBy, plan, monthStart, monthEnd, rowsAffected } = params
+  if (plan.upserts.length === 0) return
+
+  const existing = await db.overtimeEntry.findMany({
+    where: {
+      companyId,
+      employeeId: { in: plan.upserts.map(u => u.employeeId) },
+      date: { gte: monthStart, lte: monthEnd },
+    },
+    select: { id: true, employeeId: true, date: true },
+  })
+  const existingByKey = new Map(
+    existing.map(e => [`${e.employeeId}|${isoDate(e.date as Date)}`, e.id])
+  )
+
+  const creates: Array<{
+    companyId: string
+    employeeId: string
+    date: Date
+    hours: number
+    note: string | null
+    source: string
+    sourceBy: string
+  }> = []
+  const updates: Array<{ id: string; hours: number; note: string | null }> = []
+
+  for (const row of plan.upserts) {
+    const id = existingByKey.get(`${row.employeeId}|${isoDate(row.date)}`)
+    if (id) {
+      updates.push({ id, hours: row.hours, note: row.note })
+    } else {
+      creates.push({
+        companyId,
+        employeeId: row.employeeId,
+        date: row.date,
+        hours: row.hours,
+        note: row.note,
+        source: "SHEET_SYNC",
+        sourceBy: syncedBy,
+      })
+    }
+    rowsAffected.overtime++
+  }
+
+  if (creates.length > 0) {
+    await db.overtimeEntry.createMany({ data: creates })
+  }
+  for (let i = 0; i < updates.length; i += UPDATE_CHUNK_SIZE) {
+    const chunk = updates.slice(i, i + UPDATE_CHUNK_SIZE)
+    await db.$transaction(
+      chunk.map(u =>
+        db.overtimeEntry.update({
+          where: { id: u.id },
+          data: {
+            hours: u.hours,
+            note: u.note,
+            source: "SHEET_SYNC",
+            sourceBy: syncedBy,
+          },
+        })
+      )
+    )
+  }
+}
+
+/** Batch-write KpiViolation — same pattern as overtime. */
+async function writeKpi(params: {
+  companyId: string
+  syncedBy: string
+  plan: ImportPlan<KpiRow>
+  monthStart: Date
+  monthEnd: Date
+  rowsAffected: SyncRowsAffected
+}): Promise<void> {
+  const { companyId, syncedBy, plan, monthStart, monthEnd, rowsAffected } = params
+  if (plan.upserts.length === 0) return
+
+  const existing = await db.kpiViolation.findMany({
+    where: {
+      companyId,
+      employeeId: { in: plan.upserts.map(u => u.employeeId) },
+      date: { gte: monthStart, lte: monthEnd },
+    },
+    select: { id: true, employeeId: true, date: true },
+  })
+  const existingByKey = new Map(
+    existing.map(e => [`${e.employeeId}|${isoDate(e.date as Date)}`, e.id])
+  )
+
+  const creates: Array<{
+    companyId: string
+    employeeId: string
+    date: Date
+    types: string[]
+    note: string | null
+    source: string
+    sourceBy: string
+  }> = []
+  const updates: Array<{ id: string; types: string[]; note: string | null }> = []
+
+  for (const row of plan.upserts) {
+    const id = existingByKey.get(`${row.employeeId}|${isoDate(row.date)}`)
+    if (id) {
+      updates.push({ id, types: row.types, note: row.note })
+    } else {
+      creates.push({
+        companyId,
+        employeeId: row.employeeId,
+        date: row.date,
+        types: row.types,
+        note: row.note,
+        source: "SHEET_SYNC",
+        sourceBy: syncedBy,
+      })
+    }
+    rowsAffected.kpi++
+  }
+
+  if (creates.length > 0) {
+    await db.kpiViolation.createMany({ data: creates })
+  }
+  for (let i = 0; i < updates.length; i += UPDATE_CHUNK_SIZE) {
+    const chunk = updates.slice(i, i + UPDATE_CHUNK_SIZE)
+    await db.$transaction(
+      chunk.map(u =>
+        db.kpiViolation.update({
+          where: { id: u.id },
+          data: {
+            types: u.types,
+            note: u.note,
+            source: "SHEET_SYNC",
+            sourceBy: syncedBy,
+          },
+        })
+      )
+    )
+  }
+}
+
 /**
  * Run the full sync for one company. Caller should have already loaded
  * CompanySettings and confirmed `sheetSyncEnabled / sheetUrl / sheetMonth`
@@ -155,18 +429,6 @@ export async function syncSheetForCompany(params: {
     logHeap("start", companyId, heapPeak)
     const { monthStart, monthEnd } = monthBoundaries(sheetMonth)
 
-    // --- Fetch + parse sheet ---
-    const wb = await fetchSheetWorkbook(sheetUrl)
-    const tabs = findTabs(wb)
-    logHeap("after-fetch-parse", companyId, heapPeak)
-
-    if (!tabs.workUnit && !tabs.overtime && !tabs.kpi) {
-      throw new SyncError(
-        "NO_TABS_FOUND",
-        `Không tìm thấy tab nào cần đồng bộ. Các tab có trong sheet: ${tabs.availableTabs.join(", ")}`
-      )
-    }
-
     // --- Build shared import context ---
     const employees = await db.employee.findMany({
       where: { companyId, deletedAt: null },
@@ -185,163 +447,84 @@ export async function syncSheetForCompany(params: {
       monthStart,
       employees.map(e => e.id)
     )
-
     const ctx: ImportCtx = { codeToEmp, lockedEmpIds, monthStart, monthEnd }
     logHeap("after-ctx-loaded", companyId, heapPeak)
 
-    // --- Sync WorkUnit tab ---
-    if (tabs.workUnit) {
-      const plan = planWorkUnitsImport(tabs.workUnit, ctx)
-      if (!plan.monthMatches) {
+    // --- Parse phase (scoped IIFE so ExcelJS workbook + tabs are eligible
+    // for GC before the slow per-tab DB writes start) ---
+    const { workUnitPlan, overtimePlan, kpiPlan } = await (async () => {
+      const wb = await fetchSheetWorkbook(sheetUrl)
+      const tabs = findTabs(wb)
+      logHeap("after-fetch", companyId, heapPeak)
+
+      if (!tabs.workUnit && !tabs.overtime && !tabs.kpi) {
         throw new SyncError(
-          "MONTH_MISMATCH",
-          `Tab '${tabs.workUnit.name}' chứa ngày không thuộc tháng ${sheetMonth}`
-        )
-      }
-      if (plan.errors.length > 0) {
-        throw new SyncError(
-          "PARSE_ERROR",
-          `Tab '${tabs.workUnit.name}' có lỗi: ${plan.errors[0].message}`
+          "NO_TABS_FOUND",
+          `Không tìm thấy tab nào cần đồng bộ. Các tab có trong sheet: ${tabs.availableTabs.join(", ")}`
         )
       }
 
-      // Q1: preserve rows that already have a manager note.
-      const existing = await db.workUnit.findMany({
-        where: {
-          companyId,
-          employeeId: { in: plan.upserts.map(u => u.employeeId) },
-          date: { gte: monthStart, lte: monthEnd },
-        },
-        select: { employeeId: true, date: true, note: true },
+      const workUnitPlan = tabs.workUnit
+        ? { plan: planWorkUnitsImport(tabs.workUnit, ctx), name: tabs.workUnit.name }
+        : null
+      const overtimePlan = tabs.overtime
+        ? { plan: planOvertimeImport(tabs.overtime, ctx), name: tabs.overtime.name }
+        : null
+      const kpiPlan = tabs.kpi
+        ? { plan: planKpiImport(tabs.kpi, ctx), name: tabs.kpi.name }
+        : null
+      logHeap("after-parse", companyId, heapPeak)
+
+      return { workUnitPlan, overtimePlan, kpiPlan }
+    })()
+    // wb + tabs are out of scope now; next major GC cycle can reclaim them
+    // while we're waiting on DB IO below.
+    logHeap("after-release", companyId, heapPeak)
+
+    // --- Validate all plans before touching the DB ---
+    if (workUnitPlan) assertPlanValid(workUnitPlan.plan, workUnitPlan.name, sheetMonth)
+    else warnings.push("Tab 'BANG CHAM CONG' không tìm thấy")
+
+    if (overtimePlan) assertPlanValid(overtimePlan.plan, overtimePlan.name, sheetMonth)
+    else warnings.push("Tab 'CC thêm giờ' không tìm thấy")
+
+    if (kpiPlan) assertPlanValid(kpiPlan.plan, kpiPlan.name, sheetMonth)
+    else warnings.push("Tab 'BẢNG THEO DÕI KP CC' không tìm thấy")
+
+    // --- Persist phase (batched writes) ---
+    if (workUnitPlan) {
+      await writeWorkUnits({
+        companyId,
+        syncedBy,
+        plan: workUnitPlan.plan,
+        monthStart,
+        monthEnd,
+        rowsAffected,
       })
-      const notedKeys = new Set(
-        existing
-          .filter(e => e.note)
-          .map(e => `${e.employeeId}|${(e.date as Date).toISOString().slice(0, 10)}`)
-      )
-
-      for (const row of plan.upserts) {
-        const key = `${row.employeeId}|${row.date.toISOString().slice(0, 10)}`
-        if (notedKeys.has(key)) {
-          rowsAffected.preservedNotes++
-          continue
-        }
-        await db.workUnit.upsert({
-          where: { employeeId_date: { employeeId: row.employeeId, date: row.date } },
-          create: {
-            companyId,
-            employeeId: row.employeeId,
-            date: row.date,
-            units: row.units,
-            note: row.note,
-            source: "SHEET_SYNC",
-            sourceBy: syncedBy,
-          },
-          update: { units: row.units, note: row.note, source: "SHEET_SYNC", sourceBy: syncedBy },
-        })
-        rowsAffected.workUnit++
-      }
-
-      // Count skipped (parser bucket reasons)
-      for (const s of plan.skipped) {
-        if (s.reason.includes("không tồn tại")) rowsAffected.skippedEmps++
-        else if (s.reason.includes("bảng lương")) rowsAffected.skippedLocked++
-      }
-    } else {
-      warnings.push("Tab 'BANG CHAM CONG' không tìm thấy")
     }
     logHeap("after-workunit-upsert", companyId, heapPeak)
 
-    // --- Sync Overtime tab ---
-    if (tabs.overtime) {
-      const plan = planOvertimeImport(tabs.overtime, ctx)
-      if (!plan.monthMatches) {
-        throw new SyncError(
-          "MONTH_MISMATCH",
-          `Tab '${tabs.overtime.name}' chứa ngày không thuộc tháng ${sheetMonth}`
-        )
-      }
-      if (plan.errors.length > 0) {
-        throw new SyncError(
-          "PARSE_ERROR",
-          `Tab '${tabs.overtime.name}' có lỗi: ${plan.errors[0].message}`
-        )
-      }
-
-      // OvertimeEntry has no @@unique(employeeId, date); do manual upsert.
-      for (const row of plan.upserts) {
-        const existing = await db.overtimeEntry.findFirst({
-          where: { companyId, employeeId: row.employeeId, date: row.date },
-          select: { id: true },
-        })
-        if (existing) {
-          await db.overtimeEntry.update({
-            where: { id: existing.id },
-            data: { hours: row.hours, note: row.note, source: "SHEET_SYNC", sourceBy: syncedBy },
-          })
-        } else {
-          await db.overtimeEntry.create({
-            data: {
-              companyId,
-              employeeId: row.employeeId,
-              date: row.date,
-              hours: row.hours,
-              note: row.note,
-              source: "SHEET_SYNC",
-              sourceBy: syncedBy,
-            },
-          })
-        }
-        rowsAffected.overtime++
-      }
-    } else {
-      warnings.push("Tab 'CC thêm giờ' không tìm thấy")
+    if (overtimePlan) {
+      await writeOvertime({
+        companyId,
+        syncedBy,
+        plan: overtimePlan.plan,
+        monthStart,
+        monthEnd,
+        rowsAffected,
+      })
     }
     logHeap("after-overtime-upsert", companyId, heapPeak)
 
-    // --- Sync KPI tab ---
-    if (tabs.kpi) {
-      const plan = planKpiImport(tabs.kpi, ctx)
-      if (!plan.monthMatches) {
-        throw new SyncError(
-          "MONTH_MISMATCH",
-          `Tab '${tabs.kpi.name}' chứa ngày không thuộc tháng ${sheetMonth}`
-        )
-      }
-      if (plan.errors.length > 0) {
-        throw new SyncError(
-          "PARSE_ERROR",
-          `Tab '${tabs.kpi.name}' có lỗi: ${plan.errors[0].message}`
-        )
-      }
-
-      for (const row of plan.upserts) {
-        const existing = await db.kpiViolation.findFirst({
-          where: { companyId, employeeId: row.employeeId, date: row.date },
-          select: { id: true },
-        })
-        if (existing) {
-          await db.kpiViolation.update({
-            where: { id: existing.id },
-            data: { types: row.types, note: row.note, source: "SHEET_SYNC", sourceBy: syncedBy },
-          })
-        } else {
-          await db.kpiViolation.create({
-            data: {
-              companyId,
-              employeeId: row.employeeId,
-              date: row.date,
-              types: row.types,
-              note: row.note,
-              source: "SHEET_SYNC",
-              sourceBy: syncedBy,
-            },
-          })
-        }
-        rowsAffected.kpi++
-      }
-    } else {
-      warnings.push("Tab 'BẢNG THEO DÕI KP CC' không tìm thấy")
+    if (kpiPlan) {
+      await writeKpi({
+        companyId,
+        syncedBy,
+        plan: kpiPlan.plan,
+        monthStart,
+        monthEnd,
+        rowsAffected,
+      })
     }
     logHeap("after-kpi-upsert", companyId, heapPeak)
 
