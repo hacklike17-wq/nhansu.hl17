@@ -373,7 +373,35 @@ export function planKpiImport(
     dc => dc.date >= ctx.monthStart && dc.date <= ctx.monthEnd
   )
 
-  const VALID_CODES = new Set(["ĐM", "NP", "KL", "LT", "QCC", "OL"])
+  // Sorted by length DESC so longer codes (QCC) match before shorter (KL)
+  // when scanning concatenated input like "QCCKL" greedily.
+  const VALID_CODES_GREEDY = ["QCC", "ĐM", "NP", "KL", "LT", "OL"] as const
+
+  /**
+   * Recognize KPI codes inside a string. Handles:
+   *   - separator-delimited:   "ĐM, OL" / "ĐM OL" / "ĐM/OL"
+   *   - concatenated:          "ĐMOL"   / "QCCKL"
+   *   - mixed garbage:         "x ĐM"   → ["ĐM"]
+   * Returns deduped codes in order of first appearance. Empty array if none
+   * recognized — caller falls back to default ["ĐM"].
+   */
+  function parseKpiCodes(s: string): string[] {
+    const found: string[] = []
+    let i = 0
+    while (i < s.length) {
+      let matched = false
+      for (const code of VALID_CODES_GREEDY) {
+        if (s.startsWith(code, i)) {
+          if (!found.includes(code)) found.push(code)
+          i += code.length
+          matched = true
+          break
+        }
+      }
+      if (!matched) i++
+    }
+    return found
+  }
 
   for (const cell of parsed.cells) {
     const v = validateEmpDate(cell.empCode, cell.date, ctx)
@@ -395,12 +423,7 @@ export function planKpiImport(
     } else if (typeof raw === "string") {
       const s = raw.trim().toUpperCase()
       if (!s || s === "0") continue
-      // If the string contains valid KPI codes → split
-      const parts = s
-        .split(/[,;\s/]+/)
-        .map(x => x.trim())
-        .filter(Boolean)
-      const recognized = parts.filter(p => VALID_CODES.has(p))
+      const recognized = parseKpiCodes(s)
       if (recognized.length > 0) {
         types = recognized
       } else {
