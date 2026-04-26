@@ -3,8 +3,11 @@
  * KpiViolation from a Google Sheet XLSX export into the DB.
  *
  * Design notes (from the RFC):
- *  Q1 (conflict):  if a WorkUnit row already has a non-null note, the sync
- *                  leaves it alone. Every other case upserts.
+ *  Q1 (conflict):  rows with `source = "MANUAL"` or a non-null note are
+ *                  preserved (counted in `preservedNotes`). Every other case
+ *                  upserts. Applies to all 3 tables (work_units, overtime,
+ *                  kpi) — any cell a human edited stays put even if the user
+ *                  forgot to add a note.
  *  Q2 (lock):      employees whose payroll for the target month is not DRAFT
  *                  are skipped entirely (counted in `skippedLocked`).
  *  Q3 (empty):     blank cells in the sheet produce no DB mutation (parser
@@ -49,7 +52,11 @@ export type SyncRowsAffected = {
   skippedEmps: number
   /** Rows skipped because the employee's payroll is locked for this month. */
   skippedLocked: number
-  /** Rows preserved because the existing WorkUnit row has a manager's note. */
+  /**
+   * Rows preserved because the existing row was either manually edited
+   * (`source === "MANUAL"`) or has a manager's note. Field name kept for
+   * backwards compatibility with `sheet_sync_logs.rowsAffected` history.
+   */
   preservedNotes: number
   /**
    * Peak heapUsed (MB) seen during the sync. Added 2026-04-24 after the
@@ -177,7 +184,7 @@ async function writeWorkUnits(params: {
       employeeId: { in: plan.upserts.map(u => u.employeeId) },
       date: { gte: monthStart, lte: monthEnd },
     },
-    select: { id: true, employeeId: true, date: true, note: true },
+    select: { id: true, employeeId: true, date: true, note: true, source: true },
   })
   const existingByKey = new Map(
     existing.map(e => [`${e.employeeId}|${isoDate(e.date as Date)}`, e])
@@ -197,7 +204,7 @@ async function writeWorkUnits(params: {
   for (const row of plan.upserts) {
     const key = `${row.employeeId}|${isoDate(row.date)}`
     const ex = existingByKey.get(key)
-    if (ex?.note) {
+    if (ex?.source === "MANUAL" || ex?.note) {
       rowsAffected.preservedNotes++
       continue
     }
@@ -257,10 +264,10 @@ async function writeOvertime(params: {
       employeeId: { in: plan.upserts.map(u => u.employeeId) },
       date: { gte: monthStart, lte: monthEnd },
     },
-    select: { id: true, employeeId: true, date: true },
+    select: { id: true, employeeId: true, date: true, note: true, source: true },
   })
   const existingByKey = new Map(
-    existing.map(e => [`${e.employeeId}|${isoDate(e.date as Date)}`, e.id])
+    existing.map(e => [`${e.employeeId}|${isoDate(e.date as Date)}`, e])
   )
 
   const creates: Array<{
@@ -275,9 +282,13 @@ async function writeOvertime(params: {
   const updates: Array<{ id: string; hours: number; note: string | null }> = []
 
   for (const row of plan.upserts) {
-    const id = existingByKey.get(`${row.employeeId}|${isoDate(row.date)}`)
-    if (id) {
-      updates.push({ id, hours: row.hours, note: row.note })
+    const ex = existingByKey.get(`${row.employeeId}|${isoDate(row.date)}`)
+    if (ex?.source === "MANUAL" || ex?.note) {
+      rowsAffected.preservedNotes++
+      continue
+    }
+    if (ex) {
+      updates.push({ id: ex.id, hours: row.hours, note: row.note })
     } else {
       creates.push({
         companyId,
@@ -331,10 +342,10 @@ async function writeKpi(params: {
       employeeId: { in: plan.upserts.map(u => u.employeeId) },
       date: { gte: monthStart, lte: monthEnd },
     },
-    select: { id: true, employeeId: true, date: true },
+    select: { id: true, employeeId: true, date: true, note: true, source: true },
   })
   const existingByKey = new Map(
-    existing.map(e => [`${e.employeeId}|${isoDate(e.date as Date)}`, e.id])
+    existing.map(e => [`${e.employeeId}|${isoDate(e.date as Date)}`, e])
   )
 
   const creates: Array<{
@@ -349,9 +360,13 @@ async function writeKpi(params: {
   const updates: Array<{ id: string; types: string[]; note: string | null }> = []
 
   for (const row of plan.upserts) {
-    const id = existingByKey.get(`${row.employeeId}|${isoDate(row.date)}`)
-    if (id) {
-      updates.push({ id, types: row.types, note: row.note })
+    const ex = existingByKey.get(`${row.employeeId}|${isoDate(row.date)}`)
+    if (ex?.source === "MANUAL" || ex?.note) {
+      rowsAffected.preservedNotes++
+      continue
+    }
+    if (ex) {
+      updates.push({ id: ex.id, types: row.types, note: row.note })
     } else {
       creates.push({
         companyId,
