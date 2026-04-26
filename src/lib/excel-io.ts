@@ -205,7 +205,11 @@ export function resolveColumnLayout(
     let day: number | null = null
 
     if (raw instanceof Date) {
-      day = raw.getUTCDate()
+      // Google Sheets / Excel export DATE cells as midnight in the
+      // spreadsheet's locale (Asia/Ho_Chi_Minh = UTC+7 here). A user-visible
+      // 01/04/2026 lands as 2026-03-31T17:00:00.000Z; getUTCDate() would
+      // return 31 (wrong). Shift +7h so we read the wall-clock VN day.
+      day = new Date(raw.getTime() + 7 * 3600 * 1000).getUTCDate()
     } else {
       // Fallback: look 2 rows below for a sequential day-number row
       // (header / day-of-week / day-number pattern common in VN templates)
