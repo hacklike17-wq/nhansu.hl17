@@ -226,7 +226,9 @@ export default function ChamCongPage() {
         employeeId: attEdit.empId,
         date: attEdit.date,
         units: val,
-        note: note.trim() || undefined,
+        // Always send note (kể cả empty) — nếu fallback về undefined
+        // thì Prisma skip field và DB giữ note cũ → user clear không có hiệu lực.
+        note: note.trim(),
       })
       await mutateWU()
       setAttEdit(null)

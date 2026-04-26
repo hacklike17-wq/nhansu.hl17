@@ -116,7 +116,10 @@ export async function POST(req: NextRequest) {
     if (!parsed.success)
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-    const { employeeId, date, units, note } = parsed.data
+    const { employeeId, date, units, note: rawNote } = parsed.data
+    // Empty string from frontend = "user xoá ghi chú" → null trong DB.
+    // undefined cũng coi như null cho nhất quán.
+    const note = rawNote && rawNote.trim().length > 0 ? rawNote : null
     const dateObj = new Date(date + "T00:00:00Z")
 
     // Guard: reject if the employee's payroll for this month is not DRAFT
