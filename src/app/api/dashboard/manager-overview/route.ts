@@ -163,13 +163,13 @@ export async function GET(_req: NextRequest) {
     //    month are not flagged.
     const prevMonthStart = new Date(Date.UTC(y, m - 1, 1))
     const draftPayrollCount = await db.payroll.count({
-      where: { companyId, month: prevMonthStart, status: "DRAFT" },
+      where: { companyId, month: prevMonthStart, status: "DRAFT", employee: { excludeFromPayroll: false } },
     })
     const draftPayrollMonthLabel = `${prevMonthStart.getUTCMonth() + 1}/${prevMonthStart.getUTCFullYear()}`
 
     // 3) Pending UNPAID leaves
     const pendingUnpaidLeaves = await db.leaveRequest.count({
-      where: { companyId, type: "UNPAID", status: "PENDING" },
+      where: { companyId, type: "UNPAID", status: "PENDING", employee: { excludeFromPayroll: false } },
     })
 
     // ── Month progress ────────────────────────────────────────────

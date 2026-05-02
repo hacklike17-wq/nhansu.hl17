@@ -30,7 +30,7 @@ async function getKpiBreakdown(
   const rows = await db.kpiViolation.findMany({
     where: {
       companyId,
-      ...(employeeId ? { employeeId } : {}),
+      ...(employeeId ? { employeeId } : { employee: { excludeFromPayroll: false } }),
       date: { gte: monthDate, lte: monthEnd },
     },
     select: { types: true },
@@ -134,13 +134,13 @@ export async function getAdminStats(companyId: string): Promise<AdminStats> {
 
   const [totalEmployees, activeAccounts, pendingPayrolls, approvedPayrolls, pendingLeaves, payrollSum, attendanceKpi] =
     await Promise.all([
-      db.employee.count({ where: { companyId, deletedAt: null } }),
+      db.employee.count({ where: { companyId, deletedAt: null, excludeFromPayroll: false } }),
       db.user.count({ where: { companyId, employeeId: { not: null } } }),
-      db.payroll.count({ where: { companyId, status: "PENDING" } }),
-      db.payroll.count({ where: { companyId, status: { in: ["APPROVED", "LOCKED", "PAID"] } } }),
-      db.leaveRequest.count({ where: { companyId, status: "PENDING" } }),
+      db.payroll.count({ where: { companyId, status: "PENDING", employee: { excludeFromPayroll: false } } }),
+      db.payroll.count({ where: { companyId, status: { in: ["APPROVED", "LOCKED", "PAID"] }, employee: { excludeFromPayroll: false } } }),
+      db.leaveRequest.count({ where: { companyId, status: "PENDING", employee: { excludeFromPayroll: false } } }),
       db.payroll.aggregate({
-        where: { companyId, month: monthDate },
+        where: { companyId, month: monthDate, employee: { excludeFromPayroll: false } },
         _sum: { netSalary: true },
       }),
       getKpiBreakdown(companyId, monthDate),
@@ -162,14 +162,14 @@ export async function getManagerStats(companyId: string): Promise<ManagerStats> 
   const monthDate = currentMonthDate()
 
   const [totalEmployees, pendingPayrolls, statusGroups, pendingLeaves, attendanceKpi] = await Promise.all([
-    db.employee.count({ where: { companyId, deletedAt: null } }),
-    db.payroll.count({ where: { companyId, status: "PENDING" } }),
+    db.employee.count({ where: { companyId, deletedAt: null, excludeFromPayroll: false } }),
+    db.payroll.count({ where: { companyId, status: "PENDING", employee: { excludeFromPayroll: false } } }),
     db.payroll.groupBy({
       by: ["status"],
-      where: { companyId, month: monthDate },
+      where: { companyId, month: monthDate, employee: { excludeFromPayroll: false } },
       _count: { _all: true },
     }),
-    db.leaveRequest.count({ where: { companyId, status: "PENDING" } }),
+    db.leaveRequest.count({ where: { companyId, status: "PENDING", employee: { excludeFromPayroll: false } } }),
     getKpiBreakdown(companyId, monthDate),
   ])
 

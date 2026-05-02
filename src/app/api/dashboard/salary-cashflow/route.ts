@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
       where: {
         companyId: ctx.companyId,
         status: { in: ["APPROVED", "LOCKED", "PAID"] },
+        employee: { excludeFromPayroll: false },
       },
       select: {
         month: true,
