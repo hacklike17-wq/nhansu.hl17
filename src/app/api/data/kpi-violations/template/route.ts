@@ -55,7 +55,8 @@ export async function GET(req: NextRequest) {
       monthStr: month,
       subtitleParts: [
         "Ô trống = không vi phạm · 1 hoặc x = có vi phạm (mặc định ĐM)",
-        "Có thể ghi nhiều loại: ĐM,KL / NP;QCC / LT / OL …",
+        "Mã hỗ trợ: ĐM · VS · NP · KL · KL2 (KL nửa ngày) · LT · QCC · OL",
+        "Có thể ghi nhiều loại: ĐM,KL / NP;QCC / VS,OL …",
       ],
     })
     const dataStart = writeMatrixHeader(ws, nextRow, days)

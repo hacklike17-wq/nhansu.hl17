@@ -78,8 +78,10 @@ export function attLabel(units: number | null): string {
 
 export const KPI_CONFIG: Record<KpiViolationType, { full: string; cls: string; dot: string }> = {
   "ĐM":  { full: "Đi muộn",          cls: "bg-amber-100 text-amber-700 border-amber-200",    dot: "bg-amber-400"  },
+  VS:    { full: "Về sớm",            cls: "bg-yellow-100 text-yellow-700 border-yellow-200", dot: "bg-yellow-400" },
   NP:    { full: "Nghỉ (lần 1)",     cls: "bg-blue-100 text-blue-700 border-blue-200",       dot: "bg-blue-400"   },
   KL:    { full: "Nghỉ không lương", cls: "bg-rose-100 text-rose-800 border-rose-200",       dot: "bg-rose-500"   },
+  KL2:   { full: "Nghỉ KL ½ ngày",   cls: "bg-pink-100 text-pink-700 border-pink-200",       dot: "bg-pink-400"   },
   LT:    { full: "Nghỉ Lễ tết",      cls: "bg-emerald-100 text-emerald-700 border-emerald-200", dot: "bg-emerald-400" },
   QCC:   { full: "Quên chấm công",   cls: "bg-orange-100 text-orange-700 border-orange-200", dot: "bg-orange-400" },
   OL:    { full: "Làm Online",       cls: "bg-teal-100 text-teal-700 border-teal-200",       dot: "bg-teal-400"   },

@@ -8,6 +8,7 @@ import {
   Ban,
   HelpCircle,
   Laptop,
+  LogOut,
   RefreshCw,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -22,8 +23,10 @@ type Card = {
 
 const CARDS: Card[] = [
   { code: 'ĐM',  label: 'Đi muộn',          icon: <Clock3 size={16}/>,        cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { code: 'VS',  label: 'Về sớm',            icon: <LogOut size={16}/>,        cls: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
   { code: 'NP',  label: 'Nghỉ (lần 1)',     icon: <CalendarOff size={16}/>,   cls: 'bg-blue-50 text-blue-700 border-blue-200' },
   { code: 'KL',  label: 'Nghỉ không lương', icon: <Ban size={16}/>,           cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+  { code: 'KL2', label: 'Nghỉ KL ½ ngày',   icon: <Ban size={16}/>,           cls: 'bg-pink-50 text-pink-700 border-pink-200' },
   { code: 'LT',  label: 'Nghỉ Lễ tết',      icon: <AlertTriangle size={16}/>, cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   { code: 'QCC', label: 'Quên chấm công',   icon: <HelpCircle size={16}/>,    cls: 'bg-orange-50 text-orange-700 border-orange-200' },
   { code: 'OL',  label: 'Làm Online',        icon: <Laptop size={16}/>,        cls: 'bg-teal-50 text-teal-700 border-teal-200' },
@@ -74,7 +77,7 @@ export default function AttendanceKpiPanel({
     }
   )
 
-  const tally: KpiBreakdown = data?.tally ?? initialKpi ?? { "ĐM": 0, NP: 0, KL: 0, LT: 0, QCC: 0, OL: 0 }
+  const tally: KpiBreakdown = data?.tally ?? initialKpi ?? { "ĐM": 0, NP: 0, KL: 0, KL2: 0, LT: 0, QCC: 0, OL: 0, VS: 0 }
   const totalRows = data?.totalRows ?? 0
   const scopeLabel =
     data?.scope === 'self'

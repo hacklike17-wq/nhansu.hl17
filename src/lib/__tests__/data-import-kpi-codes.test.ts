@@ -87,4 +87,26 @@ describe("planKpiImport — concatenated KPI codes", () => {
     const plan = runWith("0")
     expect(plan.upserts).toHaveLength(0)
   })
+
+  // KL2 (nghỉ KL nửa ngày) phải match TRƯỚC KL trong greedy parser,
+  // nếu không "KL2" sẽ bị parse thành ["KL"] và mất chữ "2".
+  it("recognizes 'KL2' as KL2 (not KL) — longest match wins", () => {
+    const plan = runWith("KL2")
+    expect(plan.upserts[0].types).toEqual(["KL2"])
+  })
+
+  it("recognizes 'KLKL2' as both KL and KL2", () => {
+    const plan = runWith("KLKL2")
+    expect(plan.upserts[0].types).toEqual(["KL", "KL2"])
+  })
+
+  it("recognizes 'VS' (về sớm)", () => {
+    const plan = runWith("VS")
+    expect(plan.upserts[0].types).toEqual(["VS"])
+  })
+
+  it("recognizes 'VSOL' as VS + OL (concatenated)", () => {
+    const plan = runWith("VSOL")
+    expect(plan.upserts[0].types).toEqual(["VS", "OL"])
+  })
 })

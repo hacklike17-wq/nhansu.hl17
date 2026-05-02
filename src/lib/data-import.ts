@@ -154,8 +154,10 @@ function validateEmpDate(
  */
 export const WORK_UNIT_CODE_MAP: Record<string, { units: number; note: string }> = {
   "ĐM":  { units: 1, note: "Đi muộn" },
+  VS:    { units: 1, note: "Về sớm" },
   NP:    { units: 0, note: "Nghỉ phép" },
   KL:    { units: 0, note: "Nghỉ không lương" },
+  KL2:   { units: 0.5, note: "Nghỉ không lương nửa ngày" },
   LT:    { units: 1, note: "Nghỉ Lễ tết" },
   TS:    { units: 1, note: "Nghỉ thai sản" },
   QCC:   { units: 1, note: "Quên chấm công" },
@@ -164,7 +166,7 @@ export const WORK_UNIT_CODE_MAP: Record<string, { units: number; note: string }>
 /**
  * Matrix cell semantics for chấm công:
  *   - numeric 0 / 0.5 / 1 / 1.5 / 2 / ...          → work_unit with units = value
- *   - "ĐM" / "NP" / "KL" / "LT" / "TS" / "QCC"     → mapped via WORK_UNIT_CODE_MAP
+ *   - "ĐM" / "VS" / "NP" / "KL" / "KL2" / "LT" / "TS" / "QCC"  → mapped via WORK_UNIT_CODE_MAP
  *   - Any other non-empty string                    → default to ĐM (unknown code
  *                                                     fallback, per user spec)
  */
@@ -373,9 +375,10 @@ export function planKpiImport(
     dc => dc.date >= ctx.monthStart && dc.date <= ctx.monthEnd
   )
 
-  // Sorted by length DESC so longer codes (QCC) match before shorter (KL)
-  // when scanning concatenated input like "QCCKL" greedily.
-  const VALID_CODES_GREEDY = ["QCC", "ĐM", "NP", "KL", "LT", "OL"] as const
+  // Sorted by length DESC so longer codes (QCC, KL2) match before shorter (KL)
+  // when scanning concatenated input like "QCCKL" or "KLKL2" greedily.
+  // KL2 MUST come before KL — otherwise "KL2" gets parsed as ["KL"] only.
+  const VALID_CODES_GREEDY = ["QCC", "KL2", "ĐM", "NP", "KL", "LT", "VS", "OL"] as const
 
   /**
    * Recognize KPI codes inside a string. Handles:

@@ -26,15 +26,23 @@ describe("WORK_UNIT_CODE_MAP — aligned with Google Sheet (Apr 2026)", () => {
     expect(WORK_UNIT_CODE_MAP.QCC).toEqual({ units: 1, note: "Quên chấm công" })
   })
 
+  it("VS = 1 công (về sớm vẫn tính đủ công, deduction logic xử lý riêng)", () => {
+    expect(WORK_UNIT_CODE_MAP.VS).toEqual({ units: 1, note: "Về sớm" })
+  })
+
+  it("KL2 = 0.5 công (nghỉ không lương nửa ngày)", () => {
+    expect(WORK_UNIT_CODE_MAP.KL2).toEqual({ units: 0.5, note: "Nghỉ không lương nửa ngày" })
+  })
+
   it("không còn các code cũ DM / QC / NS", () => {
     expect(WORK_UNIT_CODE_MAP.DM).toBeUndefined()
     expect(WORK_UNIT_CODE_MAP.QC).toBeUndefined()
     expect(WORK_UNIT_CODE_MAP.NS).toBeUndefined()
   })
 
-  it("chỉ có đúng 6 code", () => {
+  it("chỉ có đúng 8 code", () => {
     expect(Object.keys(WORK_UNIT_CODE_MAP).sort()).toEqual(
-      ["KL", "LT", "NP", "QCC", "TS", "ĐM"].sort()
+      ["KL", "KL2", "LT", "NP", "QCC", "TS", "VS", "ĐM"].sort()
     )
   })
 })
