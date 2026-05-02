@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
         where: {
           companyId: ctx.companyId!,
           deletedAt: null,
+          excludeFromPayroll: false,
           status: { in: ["WORKING", "HALF", "REMOTE"] },
         },
         orderBy: [{ code: "asc" }],

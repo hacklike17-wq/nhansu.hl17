@@ -25,6 +25,11 @@ export async function GET(req: NextRequest) {
     // soft-deleted rows, admin-only — used by the "NV đã nghỉ" tab),
     // "all" (both — rarely needed). Employees can only see themselves.
     const scope = searchParams.get("scope") ?? "active"
+    // `includeExcluded=true` only relevant for /caidat (HR edit page) — caller
+    // explicitly opts in to see employees flagged `excludeFromPayroll=true`
+    // (giám đốc / cố vấn). Default = filter them out so /chamcong, /luong,
+    // dashboards, exports auto-skip without needing per-call filter.
+    const includeExcluded = searchParams.get("includeExcluded") === "true"
 
     // Employees can only see their own record (e.g., for personal profile page)
     if (ctx.role === "employee") {
@@ -52,6 +57,7 @@ export async function GET(req: NextRequest) {
       where: {
         companyId: ctx.companyId ?? undefined,
         ...deletedFilter,
+        ...(includeExcluded ? {} : { excludeFromPayroll: false }),
         ...(department ? { department } : {}),
         ...(search
           ? {
@@ -144,6 +150,7 @@ export async function POST(req: NextRequest) {
           startDate,
           baseSalary: data.baseSalary,
           responsibilitySalary: data.responsibilitySalary ?? 0,
+          excludeFromPayroll: data.excludeFromPayroll ?? false,
           bankAccount: data.bankAccount ?? null,
           bankName: data.bankName ?? null,
           taxCode: data.taxCode ?? null,

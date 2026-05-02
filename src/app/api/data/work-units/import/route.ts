@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
 
     // Load employee code → id map + their IDs for lockedEmployeeIds check.
     const employees = await db.employee.findMany({
-      where: { companyId: ctx.companyId!, deletedAt: null },
+      where: { companyId: ctx.companyId!, deletedAt: null, excludeFromPayroll: false },
       select: { id: true, code: true, fullName: true, endDate: true, startDate: true },
     })
     const codeToEmp = new Map<

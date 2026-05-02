@@ -93,6 +93,7 @@ export async function PATCH(
     const SENSITIVE_FIELDS = [
       "baseSalary",
       "responsibilitySalary",
+      "excludeFromPayroll",
       "taxCode",
       "bhxhCode",
       "bankAccount",

@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
       where: {
         companyId,
         deletedAt: null,
+        excludeFromPayroll: false,
         status: { in: ["WORKING", "HALF", "REMOTE"] },
         ...(employeeIds ? { id: { in: employeeIds } } : {}),
       },

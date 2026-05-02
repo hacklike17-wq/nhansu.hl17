@@ -24,7 +24,7 @@ export default function CaiDatPage() {
   const { user } = useAuth()
   const [search, setSearch] = useState('')
   const [nhansuScope, setNhansuScope] = useState<'active' | 'deleted'>('active')
-  const { employees, mutate: mutateEmps } = useEmployees({ search, scope: nhansuScope })
+  const { employees, mutate: mutateEmps } = useEmployees({ search, scope: nhansuScope, includeExcluded: true })
   const [restoreTarget, setRestoreTarget] = useState<any | null>(null)
   const [restoring, setRestoring] = useState(false)
   const [restorePassword, setRestorePassword] = useState('')
@@ -271,6 +271,7 @@ export default function CaiDatPage() {
       position: emp.position,
       baseSalary: Number(emp.baseSalary),
       responsibilitySalary: Number(emp.responsibilitySalary ?? 0),
+      excludeFromPayroll: Boolean(emp.excludeFromPayroll ?? false),
       startDate: toDateStr(emp.startDate),
       contractType: emp.contractType ?? 'FULL_TIME',
       address: emp.address ?? '',
@@ -1066,6 +1067,25 @@ export default function CaiDatPage() {
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
                     placeholder="0" />
                 </div>
+                {/* Loại khỏi quy trình lương — chỉ admin nhìn thấy */}
+                {isBossAdmin && (
+                  <div className="col-span-2">
+                    <label className="flex items-start gap-3 p-3 border border-amber-200 bg-amber-50 rounded-lg cursor-pointer hover:bg-amber-100/60 transition">
+                      <input
+                        type="checkbox"
+                        checked={form.excludeFromPayroll}
+                        onChange={e => setForm(f => ({ ...f, excludeFromPayroll: e.target.checked }))}
+                        className="mt-0.5 w-4 h-4 accent-amber-600"
+                      />
+                      <span className="text-[12px] text-amber-900">
+                        <span className="font-semibold">Loại khỏi quy trình lương</span>
+                        <span className="block text-[11px] text-amber-700/80 mt-0.5">
+                          Bật cho Giám đốc / cố vấn / chủ doanh nghiệp — sẽ ẩn khỏi bảng công, bảng lương, báo cáo. Cron không tự tạo công, sheet-sync không upsert. Vẫn xuất hiện ở /caidat để chỉnh sửa hồ sơ.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                )}
                 {/* Địa chỉ */}
                 <div className="col-span-2">
                   <label className="block text-[11px] font-semibold text-gray-600 mb-1">Địa chỉ</label>

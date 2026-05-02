@@ -349,7 +349,7 @@ export default function NhanVienPage() {
   const [deptFilter, setDeptFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
 
-  const { employees, isLoading } = useEmployees({ search, department: deptFilter })
+  const { employees, isLoading } = useEmployees({ search, department: deptFilter, includeExcluded: true })
 
   // Detail modal
   const [selectedId, setSelectedId] = useState<string | null>(null)

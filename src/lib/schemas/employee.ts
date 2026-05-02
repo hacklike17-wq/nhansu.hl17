@@ -11,6 +11,7 @@ export const CreateEmployeeSchema = z.object({
   startDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
   baseSalary: z.number().int().min(0),
   responsibilitySalary: z.number().int().min(0).default(0),
+  excludeFromPayroll: z.boolean().default(false),
   bankAccount: z.string().optional(),
   bankName: z.string().optional(),
   taxCode: z.string().optional(),

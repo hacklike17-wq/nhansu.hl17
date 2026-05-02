@@ -71,7 +71,7 @@ const getCompanyOverview: ToolDefinition = {
 
     const [employees, payrolls, violations, workUnitCount] = await Promise.all([
       db.employee.findMany({
-        where: { companyId: ctx.companyId, deletedAt: null, accountStatus: { not: "NO_ACCOUNT" } },
+        where: { companyId: ctx.companyId, deletedAt: null, excludeFromPayroll: false, accountStatus: { not: "NO_ACCOUNT" } },
         select: { id: true, status: true },
       }),
       db.payroll.findMany({
@@ -148,6 +148,7 @@ const listEmployees: ToolDefinition = {
     const where: any = {
       companyId: ctx.companyId,
       deletedAt: null,
+      excludeFromPayroll: false,
     }
     if (typeof args.department === "string" && args.department.trim()) {
       where.department = args.department.trim()
@@ -358,6 +359,7 @@ const getAttendanceSummary: ToolDefinition = {
     const empWhere: any = {
       companyId: ctx.companyId,
       deletedAt: null,
+      excludeFromPayroll: false,
       status: { not: "RESIGNED" },
     }
     if (typeof args.department === "string" && args.department.trim()) {
@@ -450,6 +452,7 @@ const getKpiViolations: ToolDefinition = {
     const empWhere: any = {
       companyId: ctx.companyId,
       deletedAt: null,
+      excludeFromPayroll: false,
     }
     if (typeof args.department === "string" && args.department.trim()) {
       empWhere.department = args.department.trim()

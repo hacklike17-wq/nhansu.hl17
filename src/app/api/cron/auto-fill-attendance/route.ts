@@ -48,6 +48,7 @@ async function fillOneCompanyForToday(
     where: {
       companyId,
       deletedAt: null,
+      excludeFromPayroll: false,
       status: { in: ["WORKING", "HALF", "REMOTE"] },
       startDate: { lte: todayUTC },
       OR: [{ endDate: null }, { endDate: { gte: todayUTC } }],

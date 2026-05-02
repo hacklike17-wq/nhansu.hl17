@@ -73,6 +73,7 @@ export type Employee = {
   joinDate: string
   salary: number
   responsibilitySalary: number
+  excludeFromPayroll?: boolean
   bankAccount: string
   bankName: string
   taxCode: string

@@ -61,6 +61,7 @@ export async function GET(_req: NextRequest) {
       where: {
         companyId,
         deletedAt: null,
+        excludeFromPayroll: false,
         accountStatus: { not: "NO_ACCOUNT" },
       },
       select: { id: true },

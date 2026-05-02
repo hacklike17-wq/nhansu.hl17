@@ -263,6 +263,7 @@ model Employee {
   endDate              DateTime?      @db.Date
   baseSalary           Decimal        @db.Decimal(15, 0)
   responsibilitySalary Decimal        @db.Decimal(15, 0) @default(0)
+  excludeFromPayroll   Boolean        @default(false)
   bankAccount          String?
   bankName             String?
   taxCode              String?

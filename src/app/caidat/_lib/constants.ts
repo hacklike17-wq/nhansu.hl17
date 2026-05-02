@@ -44,6 +44,7 @@ export type EmpForm = {
   startDate: string
   baseSalary: number
   responsibilitySalary: number
+  excludeFromPayroll: boolean
   address: string
   workStartTime: string
   workEndTime: string
@@ -63,6 +64,7 @@ export const EMPTY_FORM: EmpForm = {
   startDate: '',
   baseSalary: 0,
   responsibilitySalary: 0,
+  excludeFromPayroll: false,
   address: '',
   workStartTime: '',
   workEndTime: '',

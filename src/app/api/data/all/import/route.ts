@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
 
     // Load employees + locked set once
     const employees = await db.employee.findMany({
-      where: { companyId: ctx.companyId!, deletedAt: null },
+      where: { companyId: ctx.companyId!, deletedAt: null, excludeFromPayroll: false },
       select: {
         id: true,
         code: true,

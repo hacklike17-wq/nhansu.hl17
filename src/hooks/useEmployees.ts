@@ -9,11 +9,14 @@ export function useEmployees(params?: {
   search?: string
   /** "active" (default) | "deleted" | "all" — gated by admin/manager at API. */
   scope?: "active" | "deleted" | "all"
+  /** /caidat dùng để VẪN thấy admin/giám đốc trong list để edit hồ sơ. */
+  includeExcluded?: boolean
 }) {
   const qs = new URLSearchParams()
   if (params?.department) qs.set("department", params.department)
   if (params?.search) qs.set("search", params.search)
   if (params?.scope && params.scope !== "active") qs.set("scope", params.scope)
+  if (params?.includeExcluded) qs.set("includeExcluded", "true")
   const url = `/api/employees?${qs.toString()}`
 
   const { data, error, isLoading, mutate } = useSWR(url, fetcher)

@@ -445,7 +445,7 @@ export async function syncSheetForCompany(params: {
 
     // --- Build shared import context ---
     const employees = await db.employee.findMany({
-      where: { companyId, deletedAt: null },
+      where: { companyId, deletedAt: null, excludeFromPayroll: false },
       select: { id: true, code: true, fullName: true, startDate: true, endDate: true },
     })
     const codeToEmp = new Map(
