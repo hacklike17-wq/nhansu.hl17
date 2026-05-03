@@ -1,7 +1,7 @@
 # System Architecture
 
 **Project:** ADMIN_HL17 — nhansu.hl17
-**Last Updated:** 2026-04-19
+**Last Updated:** 2026-05-02
 
 ---
 
@@ -239,6 +239,7 @@ The `payroll.service.ts` is the only service file. It contains:
 - `PITBracket` + `InsuranceRate`: stored in DB with time-validity — editable via Settings UI
 - `SalaryColumnVersion`: formula history — recalculating a past month uses the formula that was active then
 - All VND amounts: `Decimal @db.Decimal(15,0)` — converted to `Number` for JSON serialization
+- **`excludeFromPayroll` filter**: `Employee.excludeFromPayroll Boolean @default(false)` gates 17 payroll-related entry points. Single source of truth in `src/lib/employee-filters.ts`. Direct Employee queries use `where: { excludeFromPayroll: false }`; aggregations on related tables use `where: { employee: { excludeFromPayroll: false } }`.
 - **Payroll 3-tier data model** (normalized, enforced by DB FK):
   1. `salary_columns` — per-company column template: key, name, formula, calcMode, order
   2. `salary_values` — sparse per-employee × month manual inputs, keyed by `columnKey`; `SalaryValue.columnKey` references `SalaryColumn(companyId, key)` via FK (`ON DELETE RESTRICT ON UPDATE CASCADE`)
@@ -675,3 +676,5 @@ All 9 write paths tag `source` and `sourceBy` at the point of insert/upsert.
 | Sheet sync conflict rule | Preserve rows with non-null `note` | Manager's manual annotation wins over sheet data |
 | source/sourceBy audit | `String @default("UNKNOWN")` + `String?` on WorkUnit, OvertimeEntry, KpiViolation | Trace every write to its origin (MANUAL/AUTO_FILL/SHEET_SYNC/IMPORT/UNKNOWN) and actor |
 | Employee.code sync | Email as anchor in idempotent script | Swaps codes safely without a unique DB constraint on `code` |
+| excludeFromPayroll flag | `Boolean @default(false)` on Employee; filter utility in `employee-filters.ts` | Excludes admin / non-payroll employees without soft-delete; 17 entry points use `PAYROLL_INCLUDED_WHERE`; exceptions in `/nhanvien` and `/caidat` use `?includeExcluded=true` |
+| KPI codes expansion | `KpiViolationType` union + `KPI_CONFIG` + `VALID_CODES_GREEDY` | Added VS (về sớm), KL2 (nghỉ KL nửa ngày), OL (làm online); greedy parser ensures KL2 matched before KL in concatenated input |

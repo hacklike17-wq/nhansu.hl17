@@ -1,7 +1,7 @@
 # Codebase Summary
 
 **Project:** ADMIN_HL17 — nhansu.hl17
-**Last Updated:** 2026-04-19
+**Last Updated:** 2026-05-02
 **Framework:** Next.js 16.2.3 (App Router, Turbopack) with React 19, TypeScript 5, Prisma 7
 
 ---
@@ -135,7 +135,8 @@ nhansu.hl17/
 │   │   └── useLeaveRequests.ts     # useLeaveRequests()
 │   ├── lib/
 │   │   ├── google-sheet-fetcher.ts # Fetch + validate + parse 3 tabs from xlsx export of Google Sheet
-│   │   ├── data-import.ts          # WORK_UNIT_CODE_MAP — maps letter codes (ĐM, NP, KL, LT, TS, QCC) to công values
+│   │   ├── data-import.ts          # WORK_UNIT_CODE_MAP — maps letter codes (ĐM, VS, NP, KL, KL2, LT, TS, QCC) to công values; planWorkUnitsImport/planOvertimeImport/planKpiImport with greedy KPI parser
+│   │   ├── employee-filters.ts     # PAYROLL_INCLUDED_WHERE + isPayrollExcluded() — single source of truth for excludeFromPayroll filter across all 17 entry points
 │   │   ├── services/
 │   │   │   ├── sheet-sync.service.ts   # Core Google Sheet sync logic with advisory-lock per company
 │   │   │   └── sheet-check.service.ts  # Sheet QA scan — finds text-cells that look like numbers
@@ -175,8 +176,12 @@ nhansu.hl17/
 ├── docs/                           # Documentation (this directory)
 ├── public/                         # Static assets
 ├── scripts/
-│   ├── sync-codes-with-sheet.ts    # Idempotent Employee.code sync — uses email as anchor, runs in transaction
-│   └── check-sheet-text-cells.ts   # CLI wrapper for sheet QA scan (calls sheet-check.service)
+│   ├── sync-codes-with-sheet.ts             # Idempotent Employee.code sync — uses email as anchor, runs in transaction
+│   ├── check-sheet-text-cells.ts            # CLI wrapper for sheet QA scan (calls sheet-check.service)
+│   ├── cleanup-excluded-employee-data.ts    # One-off cleanup: delete WorkUnit/Payroll/etc for excludeFromPayroll employees. Default dry-run; pass --commit to delete.
+│   ├── recalc-all-payrolls.ts               # Bulk recalculate all DRAFT payrolls (admin utility)
+│   ├── snapshot-payroll.ts                  # Build + store snapshot for a specific payroll row
+│   └── wipe-monthly-data.ts                 # Wipe all attendance data for a given month (dev utility)
 ├── next.config.ts                  # Next.js config (minimal)
 ├── prisma.config.ts                # Prisma config
 ├── tsconfig.json                   # TypeScript config (strict, @/* alias)
@@ -386,7 +391,7 @@ SWR-based client hook for payroll data:
 
 | Table | Key Columns |
 |-------|------------|
-| `employees` | `id`, `companyId`, `fullName`, `email`, `department`, `position`, `status`, `contractType`, `baseSalary Decimal(15,0)`, `responsibilitySalary Decimal(15,0)`, `deletedAt?` |
+| `employees` | `id`, `companyId`, `fullName`, `email`, `department`, `position`, `status`, `contractType`, `baseSalary Decimal(15,0)`, `responsibilitySalary Decimal(15,0)`, `deletedAt?`, `excludeFromPayroll Boolean @default(false)` |
 | `work_units` | `id`, `companyId`, `employeeId`, `date @db.Date`, `units Decimal(4,2)` — unique `(employeeId, date)`, `source String @default("UNKNOWN")`, `sourceBy String?` |
 | `overtime_entries` | `id`, `companyId`, `employeeId`, `date @db.Date`, `hours Decimal(4,2)`, `source String @default("UNKNOWN")`, `sourceBy String?` |
 | `kpi_violations` | `id`, `companyId`, `employeeId`, `date @db.Date`, `types String[]`, `source String @default("UNKNOWN")`, `sourceBy String?` |

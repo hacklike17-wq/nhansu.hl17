@@ -1,7 +1,7 @@
 # Code Standards & Conventions
 
 **Project:** ADMIN_HL17 — nhansu.hl17
-**Last Updated:** 2026-04-19
+**Last Updated:** 2026-05-02
 
 ---
 
@@ -520,6 +520,12 @@ const result = validateFormula(
 // Variables used: luong_co_ban, cong_so
 ```
 
+`expr-eval` supports standard arithmetic plus built-in functions including `min()`, `max()`, `floor()`, `ceil()`, `round()`, `abs()`, `sqrt()`. Example — prorate lương trách nhiệm capped at 26 công:
+
+```
+luong_trach_nhiem / 26 * min(cong_so, 26)
+```
+
 ---
 
 ## 11. Currency and Formatting
@@ -686,28 +692,35 @@ The following codes are the canonical set used in the customer's Google Sheet an
 
 ### KPI Violation Codes (`KpiViolationType` in `src/types/index.ts`, `KPI_CONFIG` in `chamcong-helpers.ts`)
 
-| Code | Label |
-|------|-------|
-| `ĐM` | Đi muộn |
-| `NP` | Nghỉ phép |
-| `KL` | Nghỉ không lương |
-| `LT` | Nghỉ lễ tết |
-| `QCC` | Quên chấm công |
+| Code | Label | units (WorkUnit) |
+|------|-------|-----------------|
+| `ĐM` | Đi muộn | 1 |
+| `VS` | Về sớm | 1 |
+| `NP` | Nghỉ phép | 0 |
+| `KL` | Nghỉ không lương | 0 |
+| `KL2` | Nghỉ không lương nửa ngày | 0.5 |
+| `LT` | Nghỉ lễ tết | 1 |
+| `QCC` | Quên chấm công | 1 |
+| `OL` | Làm online | — (không ảnh hưởng công) |
 
-Previous codes `DM`, `NS`, `QC` are retired. `NS` was removed entirely; `LT` is new.
+Previous codes `DM`, `NS`, `QC` are retired. `NS` was removed entirely; `LT`, `VS`, `KL2`, and `OL` are new.
+
+**KPI import parser:** `VALID_CODES_GREEDY` in `src/lib/data-import.ts` is sorted longest-first (`KL2` before `KL`) so concatenated input like `KL2KL` or `QCCKL2` parses correctly. When adding a new code, insert it before any code that is a prefix of it.
 
 ### WorkUnit Letter Codes (`WORK_UNIT_CODE_MAP` in `src/lib/data-import.ts`)
 
 | Code | Công value | Label |
 |------|-----------|-------|
 | `ĐM` | 1 | Đi muộn |
+| `VS` | 1 | Về sớm |
 | `NP` | 0 | Nghỉ phép (company rule: nghỉ phép mất công) |
 | `KL` | 0 | Nghỉ không lương |
+| `KL2` | 0.5 | Nghỉ không lương nửa ngày |
 | `LT` | 1 | Nghỉ lễ tết |
 | `TS` | 1 | Nghỉ thai sản |
 | `QCC` | 1 | Quên chấm công |
 
-Note: `NP` changed from 1 → 0 công.
+Note: `NP` changed from 1 → 0 công. `VS` and `KL2` are new. `TS` appears only in `WORK_UNIT_CODE_MAP` (affects công), not as a `KpiViolationType`.
 
 ---
 
@@ -753,3 +766,63 @@ The `prisma/migrations/` directory contains 3 migration files that do not repres
 5. Document the raw SQL applied in a comment in `schema.prisma` or a `plans/` note
 
 **`npm run db:reset`** (`prisma migrate reset --force`) is safe only for local development with seed data — it wipes and rebuilds from scratch.
+
+---
+
+## 22. excludeFromPayroll Filter Pattern
+
+`Employee.excludeFromPayroll Boolean @default(false)` is a flag that removes an employee from all payroll-related processing without soft-deleting the record. The single source of truth for this filter lives in `src/lib/employee-filters.ts`.
+
+### Entry point patterns
+
+**Direct `Employee` queries:**
+```typescript
+import { PAYROLL_INCLUDED_WHERE } from "@/lib/employee-filters"
+
+db.employee.findMany({
+  where: { companyId, deletedAt: null, ...PAYROLL_INCLUDED_WHERE }
+})
+// equivalent to: where: { ..., excludeFromPayroll: false }
+```
+
+**Aggregations on related tables (`Payroll`, `KpiViolation`, `LeaveRequest`, `WorkUnit`, etc.):**
+```typescript
+db.payroll.findMany({
+  where: {
+    companyId,
+    month: monthDate,
+    employee: { excludeFromPayroll: false },  // filter via relation
+  }
+})
+```
+
+**Runtime check on an Employee object already in hand:**
+```typescript
+import { isPayrollExcluded } from "@/lib/employee-filters"
+
+if (isPayrollExcluded(employee)) continue  // skip this employee
+```
+
+### Scope of the filter
+
+The filter is applied at **17 entry points**:
+- Payroll generation and recalculation
+- Cron auto-fill attendance
+- Google Sheet sync
+- Dashboard aggregate queries (manager-overview, manager-team)
+- Excel export
+- AI admin tools
+
+**Exceptions** — the excluded employee still appears in:
+- `GET /api/employees?includeExcluded=true` (used by `/caidat` and `/nhanvien`)
+- `GET /api/employees/[id]` own-lookup (so the excluded employee can still edit their profile)
+- AI tool `get_employee_payroll` when the caller specifies an explicit employee ID or code
+
+### Cleanup script
+
+`scripts/cleanup-excluded-employee-data.ts` — delete historical WorkUnit / OvertimeEntry / KpiViolation / Payroll rows for excluded employees. Runs as a **dry-run by default**:
+
+```bash
+npx tsx --env-file=.env scripts/cleanup-excluded-employee-data.ts          # preview
+npx tsx --env-file=.env scripts/cleanup-excluded-employee-data.ts --commit # delete
+```

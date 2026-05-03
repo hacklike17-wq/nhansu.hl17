@@ -1,8 +1,8 @@
 # Project Overview & Product Development Requirements (PDR)
 
 **Project:** ADMIN_HL17 — nhansu.hl17
-**Version:** 2.0
-**Last Updated:** 2026-04-13
+**Version:** 2.1
+**Last Updated:** 2026-05-02
 **Status:** Production — Full-stack system with 13-phase payroll engine complete
 
 ---
@@ -79,6 +79,7 @@ The system is fully operational with:
 - Status values (enum): `WORKING`, `HALF`, `LEAVE`, `REMOTE`, `RESIGNED`
 - Contract types (enum): `FULL_TIME`, `PART_TIME`, `INTERN`, `FREELANCE`
 - Soft delete (`deletedAt`) — resigned employees preserved for payroll audit trail
+- `excludeFromPayroll Boolean @default(false)` — admin flag to remove an employee from the payroll pipeline (cron auto-fill, sheet sync, payroll generation, dashboard counts, exports) without deleting the record. Toggle UI in `/caidat` (admin role only). The filter is applied at 17 query entry points via `PAYROLL_INCLUDED_WHERE` from `src/lib/employee-filters.ts`. `GET /api/employees` accepts `?includeExcluded=true` so `/caidat` and `/nhanvien` can still display the excluded employee for editing.
 - CRUD via Route Handlers at `/api/employees`
 - `employee` role sees only own record (enforced server-side in Route Handler via session `employeeId`)
 - **Employee self-edit**: `PATCH /api/employees/[id]` has an implicit self-edit branch — if `ctx.role === "employee" && ctx.employeeId === id`, the `nhanvien.edit` permission check is bypassed and the payload is silently filtered to `SELF_EDITABLE_FIELDS`: `fullName`, `phone`, `gender`, `address`, `bankName`, `bankAccount`. System fields (`email`, `dob`, `idCard`, `taxCode`, `bhxhCode`, `baseSalary`, `department`, `position`, `contractType`, `status`, `accountStatus`) remain admin-only. No new permission was added.
@@ -89,7 +90,7 @@ The system is fully operational with:
 
 - `WorkUnit` records (công số nhận) per employee per day — unique constraint on `(employeeId, date)`
 - `OvertimeEntry` records for overtime hours per employee per day
-- `KpiViolation` records for KPI deductions per day (multi-type `String[]` — one row can hold multiple violation codes for the same day)
+- `KpiViolation` records for KPI deductions per day (multi-type `String[]` — one row can hold multiple violation codes for the same day). Current canonical codes: `ĐM` (đi muộn), `VS` (về sớm, units=1), `NP` (nghỉ phép), `KL` (nghỉ không lương), `KL2` (nghỉ không lương nửa ngày, units=0.5), `LT` (nghỉ lễ tết), `QCC` (quên chấm công), `OL` (làm online). Defined in `src/types/index.ts` (`KpiViolationType`); badge config in `src/app/chamcong/_lib/chamcong-helpers.ts` (`KPI_CONFIG`). KPI import parser uses greedy matching — `KL2` is checked before `KL` so concatenated input like `KL2KL` parses correctly.
 - `DeductionEvent` records for manual deductions (DI_MUON, VE_SOM, NGHI_NGAY, OVERTIME)
 - Month-based view with URL param `?month=YYYY-MM`
 - **All three WorkUnit mutation paths trigger payroll recalc** (fire-and-forget, `.catch(console.warn)`):
@@ -121,7 +122,7 @@ The payroll system has been through 13 upgrade phases. Current capabilities:
 - `workSalary` = `baseSalary * netWorkUnits / 26` (or formula override via `tong_luong_co_ban` column)
 - `overtimePay` = `baseSalary / 26 / 8 * overtimeHours * 1.5` (or formula override via `tien_tang_ca`)
 - `mealPay` = `netWorkUnits * 35,000` (or formula override via `tien_an`)
-- `responsibilitySalary` — from employee record
+- `responsibilitySalary` — from employee record (raw value; no proration in `payroll.service.ts`). Proration — if needed — is handled via a `SalaryColumn` formula configured through the `/caidat` UI. Example formula for the "Tổng Lương TN" column: `luong_trach_nhiem / 26 * min(cong_so, 26)`. The `expr-eval` library used by `src/lib/formula.ts` supports `min()`, `max()`, and standard arithmetic operators.
 - `tienPhuCap`, `thuong`, `tienPhat` (= `tienTruKhac`), `kpiChuyenCan` — from `SalaryValue` manual inputs (canonical `SalaryColumn` keys: `tien_phu_cap`, `thuong`, `tien_tru_khac`, `kpi_chuyen_can`)
 - `grossSalary` = workSalary + overtimePay + responsibilitySalary + mealPay + tienPhuCap + thuong + kpiChuyenCan - tienPhat
   - `kpiChuyenCan` is a bonus (positive, adds to gross)
@@ -343,7 +344,7 @@ DRAFT → PENDING → APPROVED → LOCKED → PAID
 | `Account` / `Session` / `VerificationToken` | standard | Auth.js v5 adapter tables |
 | `Company` | `companies` | Company profile and settings |
 | `CompanySettings` | `company_settings` | Work hours, overtime rates, leave policy |
-| `Employee` | `employees` | HR records with soft delete (`deletedAt`) |
+| `Employee` | `employees` | HR records with soft delete (`deletedAt`) and `excludeFromPayroll Boolean @default(false)` flag |
 | `WorkUnit` | `work_units` | Daily attendance units per employee |
 | `OvertimeEntry` | `overtime_entries` | Daily overtime hours per employee |
 | `KpiViolation` | `kpi_violations` | KPI deduction records |

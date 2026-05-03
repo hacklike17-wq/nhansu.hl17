@@ -1,7 +1,7 @@
 # Project Roadmap
 
 **Project:** ADMIN_HL17 — nhansu.hl17
-**Last Updated:** 2026-04-19
+**Last Updated:** 2026-05-02
 
 ---
 
@@ -95,21 +95,35 @@ The system migrated from a localStorage-based prototype to a full-stack PostgreS
 
 ---
 
-## Current State (2026-04-19)
+### Post-April Fixes & Features (2026-04-20 – 2026-05-02)
+
+| Commit | Description |
+|--------|-------------|
+| `4cc1a31` | **feat(employee):** `excludeFromPayroll Boolean @default(false)` field on Employee; filter utility `src/lib/employee-filters.ts` (`PAYROLL_INCLUDED_WHERE`, `isPayrollExcluded`); toggle UI in `/caidat` (admin only); 17 entry points patched. `/api/employees?includeExcluded=true` allows `/caidat` and `/nhanvien` to still see excluded admin. |
+| `f161539` | **fix(dashboard):** aggregate queries (manager-overview, manager-team, export) now filter `excludeFromPayroll` via `employee: { excludeFromPayroll: false }` on related-table queries. |
+| `4305650` | **chore(scripts):** `scripts/cleanup-excluded-employee-data.ts` — one-off script to delete historical attendance and payroll data for excluded employees. Default dry-run; `--commit` flag to actually delete. |
+| `faf21c5` | **feat(kpi):** added 2 new KPI codes: `VS` (về sớm, units=1) and `KL2` (nghỉ không lương nửa ngày, units=0.5). Updated `KpiViolationType`, `KPI_CONFIG`, `WORK_UNIT_CODE_MAP`, `AttendanceKpiPanel`. `VALID_CODES_GREEDY` keeps `KL2` before `KL` for correct greedy parsing. |
+| `63b4a18` | **fix(kpi-import):** greedy parser now correctly handles concatenated multi-code strings like `ĐMOL`, `QCCKL`, `KL2KL`. |
+| `e3b300f` | **fix(chamcong):** clearing the note textarea on a WorkUnit cell now deletes the note from the DB (previously only cleared the UI). |
+| `cd2ebd4` | **fix(sheet-sync):** MANUAL-source rows are preserved even when they have no note (previously only rows with a non-null note were preserved). |
+| `6a0ed79` | **fix(sheet-sync):** header date cells parsed correctly under UTC offset — was returning date-1 for Vietnam dates. |
+| `9af04b9` | **feat(chamcong):** hide the "Cập nhật công" button and remove the weekday row from overtime/KPI table header. |
+
+## Current State (2026-05-02)
 
 **What is fully working:**
 - Authentication (login, JWT sessions, RBAC middleware)
-- Employee management CRUD + soft delete + employee self-edit (personal/bank fields)
-- Attendance: WorkUnit, OvertimeEntry, KpiViolation, DeductionEvent; all three WorkUnit mutation paths trigger DRAFT payroll recalc; `source`/`sourceBy` audit trail on all writes
-- Payroll: full calculation engine + workflow + anomaly detection + Excel export; 3-tier normalized data model (salary_columns → salary_values → payrolls) with DB FK enforcement
+- Employee management CRUD + soft delete + employee self-edit (personal/bank fields) + `excludeFromPayroll` flag (admin toggle in `/caidat`)
+- Attendance: WorkUnit, OvertimeEntry, KpiViolation, DeductionEvent; all three WorkUnit mutation paths trigger DRAFT payroll recalc; `source`/`sourceBy` audit trail on all writes; 8 KPI codes: ĐM, VS, NP, KL, KL2, LT, QCC, OL
+- Payroll: full calculation engine + workflow + anomaly detection + Excel export; 3-tier normalized data model (salary_columns → salary_values → payrolls) with DB FK enforcement; `responsibilitySalary` proration via configurable formula column (e.g., `luong_trach_nhiem / 26 * min(cong_so, 26)`)
 - Leave requests: approval with batch DeductionEvent creation
-- Settings: PITBracket, InsuranceRate, SalaryColumn CRUD, AI config, Cấu hình bảng công (admin)
-- Google Sheet sync: admin-configurable URL + month; advisory-locked per company; manager-note-preserving conflict rule; `SheetSyncLog` audit table; manual + cron modes
+- Settings: PITBracket, InsuranceRate, SalaryColumn CRUD, AI config, Cấu hình bảng công, excludeFromPayroll toggle (admin)
+- Google Sheet sync: admin-configurable URL + month; advisory-locked per company; MANUAL-source rows preserved (with or without note); `SheetSyncLog` audit table; manual + cron modes; UTC date offset fix
 - Configurable cron: auto-fill hour and sheet sync hour settable via UI (hourly-fire + endpoint-self-filter pattern)
 - Sheet QA scan: "Kiểm tra sheet" button + `POST /api/sync/check-sheet` finds text-cells-that-look-like-numbers before syncing
 - Permission groups: CRUD + system group protection
-- Formula versioning with historical recalculation
-- Manager dashboard: live team status table + action queue from DB (no static data)
+- Formula versioning with historical recalculation; `expr-eval` supports `min()`, `max()`, and standard math functions
+- Manager dashboard: live team status table + action queue from DB (no static data); excludeFromPayroll employees excluded from all counts
 - AI assistant: floating chat widget for all roles; role-based tool calling; conversation history; monthly token cap; GFM markdown rendering
 
 **What is using static data (not yet backend-connected):**

@@ -70,15 +70,17 @@ npm run db:seed      # seed initial data (development only)
 **4. Start development server**
 
 ```bash
-npm run dev
+npm run dev -- -p 3003
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Default credentials are in `src/constants/data.ts` (`EMPLOYEES` array, `accountEmail` + `accountPassword` fields).
+Open [http://localhost:3003](http://localhost:3003). Default credentials are in `src/constants/data.ts` (`EMPLOYEES` array, `accountEmail` + `accountPassword` fields).
+
+> Local dev runs on port **3003** (not 3000) to avoid conflicts. Production VPS runs on port **3010** via pm2 process `nhansu`.
 
 ### Available Scripts
 
 ```bash
-npm run dev              # development server (Turbopack)
+npm run dev -- -p 3003   # development server (Turbopack, port 3003)
 npm run build            # production build
 npm run start            # production server
 npm run lint             # ESLint
@@ -152,7 +154,7 @@ prisma/
 | `/nghiphep` | Nghỉ phép | Leave requests and deduction events |
 | `/tuyendung` | Tuyển dụng | Recruitment pipeline |
 | `/phanquyen` | Phân quyền | Role and permission group management |
-| `/caidat` | Cài đặt | Company profile, PITBracket, InsuranceRate, salary columns, AI config |
+| `/caidat` | Cài đặt | Company profile, PITBracket, InsuranceRate, salary columns, AI config, excludeFromPayroll toggle (admin) |
 | `/doi-mat-khau` | Đổi mật khẩu | Password change |
 
 ---
@@ -224,6 +226,7 @@ Route RBAC is enforced in `middleware.ts` at Edge runtime via the `authorized` c
 - **Service layer in Route Handlers**: `payroll.service.ts` contains all business logic — Route Handlers call services, not Prisma directly.
 - **`Decimal @db.Decimal(15,0)` for VND**: No floating-point errors; converted to `Number` for JSON serialization.
 - **Soft delete on Employee**: `deletedAt` field — resigned employees preserved for payroll audit trail.
+- **`excludeFromPayroll` flag**: `Boolean @default(false)` on Employee — excludes an employee from payroll generation, cron auto-fill, sheet sync, dashboard counts, and exports without deleting the record. Toggle UI in `/caidat` (admin only). Utility at `src/lib/employee-filters.ts` (`PAYROLL_INCLUDED_WHERE`, `isPayrollExcluded`). `/api/employees` accepts `?includeExcluded=true` so `/caidat` and `/nhanvien` can still show the excluded admin.
 - **PITBracket + InsuranceRate in DB**: Editable via Settings UI — no redeploy needed for tax law changes.
 - **`needsRecalc` flag**: Set `true` on attendance mutations; cleared after recalculation. Never recalculates APPROVED/LOCKED/PAID rows.
 - **Immutable payroll snapshot**: At LOCK time, full calc snapshot (vars, formula results, insurance rates, PIT brackets) is captured in `Payroll.snapshot` JSON.
@@ -239,9 +242,10 @@ Route RBAC is enforced in `middleware.ts` at Edge runtime via the `authorized` c
 
 Full documentation in `docs/`:
 
-- `docs/project-overview-pdr.md` — Product requirements, functional specs
+- `docs/project-overview-pdr.md` — Product requirements, functional specs, role matrix
 - `docs/codebase-summary.md` — File structure, modules, DB schema, dependencies
 - `docs/code-standards.md` — Patterns, conventions, service layer, approval pattern, auth patterns
 - `docs/system-architecture.md` — Tech stack, component relationships, data flow, security
-- `docs/project-roadmap.md` — Phase history (all 13 payroll phases + AI phases complete) and future roadmap
-- `docs/deployment-guide.md` — Environment variables, Vercel + Neon setup, database commands
+- `docs/project-roadmap.md` — Phase history (all 13 payroll phases + AI phases + recent changes) and future roadmap
+- `docs/deployment-guide.md` — VPS deploy via `deploy.sh`, pm2 process `nhansu` (PORT=3010), env vars
+- `docs/design-guidelines.md` — UI patterns, Tailwind classes, color palette

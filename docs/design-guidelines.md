@@ -1,7 +1,7 @@
 # Design Guidelines
 
 **Project:** ADMIN_HL17 — nhansu.hl17
-**Last Updated:** 2026-04-13
+**Last Updated:** 2026-05-02
 
 ---
 
@@ -29,6 +29,19 @@ ADMIN_HL17 uses a clean, data-dense admin dashboard aesthetic. The design priori
 | Info / Blue | `bg-blue-50` | `text-blue-700` | `border-blue-200` |
 | Locked / Orange | `bg-orange-50` | `text-orange-700` | `border-orange-200` |
 | Neutral / Draft | `bg-gray-100` | `text-gray-600` | `border-gray-200` |
+
+### KPI Violation Badge Colors (`KPI_CONFIG` in `chamcong-helpers.ts`)
+
+| Code | Label | Background | Text |
+|------|-------|-----------|------|
+| `ĐM` | Đi muộn | `bg-amber-100` | `text-amber-700` |
+| `VS` | Về sớm | `bg-yellow-100` | `text-yellow-700` |
+| `NP` | Nghỉ (lần 1) | `bg-blue-100` | `text-blue-700` |
+| `KL` | Nghỉ không lương | `bg-rose-100` | `text-rose-800` |
+| `KL2` | Nghỉ KL ½ ngày | `bg-pink-100` | `text-pink-700` |
+| `LT` | Nghỉ Lễ tết | `bg-emerald-100` | `text-emerald-700` |
+| `QCC` | Quên chấm công | `bg-orange-100` | `text-orange-700` |
+| `OL` | Làm Online | `bg-teal-100` | `text-teal-700` |
 
 ### Payroll Status Colors
 

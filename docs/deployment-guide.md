@@ -1,7 +1,7 @@
 # Deployment Guide
 
 **Project:** ADMIN_HL17 — nhansu.hl17
-**Last Updated:** 2026-04-19
+**Last Updated:** 2026-05-02
 
 ---
 
@@ -10,10 +10,11 @@
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `DATABASE_URL` | Yes | PostgreSQL connection string (with pooling if using Neon/PgBouncer) |
-| `NEXTAUTH_SECRET` | Yes | JWT signing secret — minimum 32 bytes |
+| `NEXTAUTH_SECRET` | Yes | JWT signing secret — minimum 32 bytes. Rename from `NEXTAUTH_SECRET` to `AUTH_SECRET` is acceptable; Auth.js v5 reads both. |
 | `NEXTAUTH_URL` | Production only | Full public URL (e.g., `https://nhansu.hl17.com`) |
 | `AI_ENCRYPTION_KEY` | Required for AI | 64 hex chars (32 bytes) — encrypts stored OpenAI API keys at rest |
 | `CRON_SECRET` | Required for cron endpoints | 64 hex chars — Bearer token for `POST /api/cron/auto-fill-attendance` and `POST /api/cron/sync-sheet` |
+| `PORT` | VPS only | `3010` — set in `ecosystem.config.cjs`; production server listens on this port |
 
 Generate `NEXTAUTH_SECRET`:
 ```bash
@@ -170,6 +171,36 @@ For Neon serverless (production), use the pooler connection string for `DATABASE
 
 ---
 
+## VPS Production Deployment
+
+The production system runs on a VPS managed via pm2.
+
+| Item | Value |
+|------|-------|
+| Deploy script | `/var/www/nhansu/deploy.sh` |
+| pm2 process name | `nhansu` |
+| App port | `3010` (set via `PORT` in `ecosystem.config.cjs`) |
+| Node version | 20.19.0 |
+| npm version | 11.12.1 |
+| pm2 config | `ecosystem.config.cjs` (tracked in repo; `deploy.sh` syncs to `/var/www/nhansu/ecosystem.config.cjs`) |
+
+**Deploy:**
+```bash
+ssh subdomain   # uses SSH alias from ~/.ssh/config
+cd /var/www/nhansu && bash deploy.sh
+```
+
+`deploy.sh` runs: `git pull` → `npm install` → `npx prisma db push --accept-data-loss` → `npx prisma generate` → `npm run build` → `pm2 restart nhansu`.
+
+**Check logs:**
+```bash
+pm2 logs nhansu --lines 100
+```
+
+**See also:** `reference_vps_deploy.md` in `~/.claude/projects/.../memory/` for SSH aliases and full server config.
+
+---
+
 ## Local Development
 
 ```bash
@@ -184,8 +215,8 @@ NEXTAUTH_SECRET="dev-secret-min-32-chars-padding-here"
 npm run db:migrate    # prisma migrate dev (creates DB if needed)
 npm run db:seed       # seed initial data
 
-# 4. Start
-npm run dev           # http://localhost:3000
+# 4. Start (port 3003 — not 3000 — to avoid conflicts)
+npm run dev -- -p 3003    # http://localhost:3003
 ```
 
 ---
